@@ -1,20 +1,47 @@
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+
+# 🐷 Veckopeng
+
+**A self-hosted family chores & allowance tracker for your homelab.**  
+Parents create tasks ➜ kids complete them ➜ parents approve ➜ allowance builds up ➜ pay out via Swish.
+
 </div>
 
-# Run and deploy your AI Studio app
+---
 
-This contains everything you need to run your app locally.
+## ✨ What is Veckopeng?
 
-View your app in AI Studio: https://ai.studio/apps/drive/1KspONCNo4c0evvC-Yln5Tc0V-nJh5DZI
+Veckopeng is a small self-hosted web app for families:
 
-## Run Locally
+- 👨‍👩‍👧‍👦 **Multiple family members** – parents and kids with different roles.
+- ✅ **Chore / task system** – create tasks and assign them to kids.
+- 🔔 **Approval flow** – kids mark tasks as done, parents approve or reject.
+- 💰 **Allowance tracking** – each child has:
+  - current balance
+  - lifetime “total earned”.
+- 📲 **Swish-friendly payout** – at the end of the week you can pay out the balance via Swish from your phone.
+- 🌓 **Light & dark mode** – fits well in dark homelab control rooms 😄
+- 💾 **Local persistent storage** – all state is stored in a JSON file on your server.
 
-**Prerequisites:**  Node.js
+No cloud. No tracking. Just a simple app you run yourself.
 
+---
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## 🏗 Tech Stack
+
+- **Frontend:** React + TypeScript + Vite
+- **Backend:** Node.js + Express
+- **Storage:** JSON file on disk (`/data/state.json` inside the backend container)
+- **Deployment:** Docker & `docker-compose` friendly
+
+---
+
+## 🚀 Quick Start (Docker)
+
+> Recommended way to run Veckopeng on a homelab / NAS / small VM.
+
+### 1. Clone the repo
+
+```bash
+git clone https://github.com/daevilb/veckopeng.git
+cd veckopeng
