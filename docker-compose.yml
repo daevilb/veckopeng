@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - veckopeng_data:/data
+    restart: always
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "4173:80" # Expose on 4173 (Vite preview default) or 80. Using 4173 to avoid conflict if dev has local 8080/80 stuff.
+    depends_on:
+      - backend
+    restart: always
+
+volumes:
+  veckopeng_data:
