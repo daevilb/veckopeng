@@ -5,7 +5,7 @@ import { Setup } from './Auth';
 import { Input } from './Input';
 import { Card } from './Card';
 import { CheckCircle, Clock, DollarSign, Trash2, Plus, X, ArrowRight, User as UserIcon, ExternalLink, AlertCircle, Wallet, CheckSquare } from 'lucide-react';
-import { generateId } from '@/utils/id';
+import { generateId } from '../utils/id';
 
 
 // --- TASK MANAGER COMPONENT ---
