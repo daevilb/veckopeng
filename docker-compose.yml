@@ -6,7 +6,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "8090:8080"
     volumes:
       - veckopeng_data:/data
     restart: always
