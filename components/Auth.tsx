@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Role } from '../types';
+import { User, Role, PaymentMethod, Currency } from '../types';
 import { Button } from './Button';
 import { Input } from './Input';
 import { Card } from './Card';
@@ -17,8 +17,22 @@ export const Setup: React.FC<SetupProps> = ({ onComplete, isFirstRun }) => {
   const [role, setRole] = useState<Role>(isFirstRun ? 'parent' : 'child');
   const [avatar, setAvatar] = useState('👤');
   const [phone, setPhone] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('swish');
+  const [currency, setCurrency] = useState<Currency>('SEK');
 
   const avatars = ['👨‍👩‍👧', '🦸‍♂️', '🦸‍♀️', '🧚', '🧞', '🦊', '🦄', '🦖', '⚽️', '🎨', '🎮', '🎸', '🤖', '🦁', '🐵', '🐼'];
+
+  const paymentLabel = paymentMethod === 'swish'
+    ? 'Phone Number (for Swish)'
+    : paymentMethod === 'venmo'
+      ? 'Venmo username'
+      : 'Cash App $Cashtag';
+
+  const paymentPlaceholder = paymentMethod === 'swish'
+    ? '070...'
+    : paymentMethod === 'venmo'
+      ? '@username'
+      : '$cashtag';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,6 +45,8 @@ export const Setup: React.FC<SetupProps> = ({ onComplete, isFirstRun }) => {
       pin,
       avatar,
       phoneNumber: phone,
+      paymentMethod,
+      currency,
       balance: 0,
       totalEarned: 0
     };
@@ -38,92 +54,202 @@ export const Setup: React.FC<SetupProps> = ({ onComplete, isFirstRun }) => {
   };
 
   return (
-    <div className="w-full max-w-md mx-auto">
-      <Card className="shadow-xl dark:shadow-black/30">
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">
-            {isFirstRun ? 'Welcome to Veckopeng' : 'Add Family Member'}
-          </h2>
-          <p className="text-gray-500 dark:text-gray-400 mt-2">
-            {isFirstRun ? 'Set up the first parent account to get started.' : 'Expand your family circle.'}
-          </p>
-        </div>
+    <div className="min-h-screen flex items-center justify-center py-6">
+      <div className="w-full max-w-md">
+        <Card className="relative overflow-hidden">
+          <div className="absolute -top-16 -right-16 w-40 h-40 bg-primary-500/10 rounded-full blur-3xl" />
+          <div className="absolute -bottom-16 -left-16 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl" />
 
-        <form onSubmit={handleSubmit}>
-          <Input
-            label="Name"
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Mom, Dad, or Leo"
-          />
-
-          {!isFirstRun && (
-            <div className="mb-5">
-              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2 ml-1">Role</label>
-              <div className="flex gap-4">
-                <label className={`flex-1 p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 ${role === 'parent' ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500 dark:border-primary-500' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
-                  <input type="radio" className="hidden" checked={role === 'parent'} onChange={() => setRole('parent')} />
-                  <div className="text-center font-semibold text-gray-900 dark:text-white">Parent</div>
-                </label>
-                <label className={`flex-1 p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 ${role === 'child' ? 'bg-secondary/10 dark:bg-secondary/20 border-secondary dark:border-secondary' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
-                  <input type="radio" className="hidden" checked={role === 'child'} onChange={() => setRole('child')} />
-                  <div className="text-center font-semibold text-gray-900 dark:text-white">Child</div>
-                </label>
+          <div className="relative">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-6">
+              {!isFirstRun && (
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+              )}
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary-500 text-white text-sm">
+                    <UserPlus className="w-4 h-4" />
+                  </span>
+                  {isFirstRun ? 'Welcome to Veckopeng' : 'Add Family Member'}
+                </h2>
+                <p className="text-gray-500 dark:text-gray-400 mt-2">
+                  {isFirstRun ? 'Set up the first parent account to get started.' : 'Expand your family circle.'}
+                </p>
               </div>
             </div>
-          )}
 
-          <div className="mb-5">
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2 ml-1">Choose Avatar</label>
-            <div className="grid grid-cols-4 gap-3 bg-gray-50 dark:bg-gray-900/50 p-4 rounded-2xl border border-gray-100 dark:border-gray-700/50">
-              {avatars.map(a => (
-                <button
-                  key={a}
-                  type="button"
-                  onClick={() => setAvatar(a)}
-                  className={`text-3xl h-12 w-full flex items-center justify-center rounded-xl transition-all hover:bg-white dark:hover:bg-gray-700 hover:shadow-md ${avatar === a ? 'bg-white dark:bg-gray-700 shadow-md ring-2 ring-primary-500 scale-110' : 'opacity-70 hover:opacity-100'}`}
-                >
-                  {a}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <Input
-            label="4-Digit PIN"
-            required
-            type="password"
-            maxLength={4}
-            pattern="\d{4}"
-            value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-            className="tracking-[0.5em] text-center font-mono text-lg"
-            placeholder="••••"
-          />
-
-          {role === 'child' && (
-            <div className="mb-6 animate-in fade-in slide-in-from-top-2">
+            {/* Form */}
+            <form onSubmit={handleSubmit}>
               <Input
-                label="Phone Number (for Swish)"
+                label="Name"
                 required
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="070..."
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Mom, Dad, or Leo"
               />
-              <p className="text-xs text-blue-600 dark:text-blue-400 -mt-2 ml-1 bg-blue-50 dark:bg-blue-900/20 p-2 rounded-lg inline-block w-full">
-                Required for parents to send allowance.
-              </p>
-            </div>
-          )}
 
-          <Button type="submit" fullWidth size="lg" className="mt-4">
-            <UserPlus className="w-5 h-5" />
-            {isFirstRun ? 'Start App' : 'Create Account'}
-          </Button>
-        </form>
-      </Card>
+              <div className="mt-4">
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2 ml-1">
+                  4-digit PIN
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-3 flex items-center">
+                    <Lock className="w-4 h-4 text-gray-400" />
+                  </div>
+                  <input
+                    type="password"
+                    maxLength={4}
+                    pattern="\d{4}"
+                    className="w-full pl-10 pr-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 text-gray-900 dark:text-white text-center font-mono tracking-[0.5em] text-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                    placeholder="••••"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-1">
+                  Used to log in for this profile.
+                </p>
+              </div>
+
+              {/* Role selection (only when not first run) */}
+              {!isFirstRun && (
+                <div className="mb-5 mt-5">
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2 ml-1">Role</label>
+                  <div className="flex gap-4">
+                    <label className={`flex-1 p-4 rounded-xl border text-center cursor-pointer transition-all ${
+                      role === 'parent'
+                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200 shadow-sm'
+                        : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+                    }`}>
+                      <input type="radio" className="hidden" checked={role === 'parent'} onChange={() => setRole('parent')} />
+                      <div className="text-center font-semibold text-gray-900 dark:text-white">Parent</div>
+                    </label>
+                    <label className={`flex-1 p-4 rounded-xl border text-center cursor-pointer transition-all ${
+                      role === 'child'
+                        ? 'border-pink-500 bg-pink-50 dark:bg-pink-900/30 text-pink-700 dark:text-pink-200 shadow-sm'
+                        : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+                    }`}>
+                      <input type="radio" className="hidden" checked={role === 'child'} onChange={() => setRole('child')} />
+                      <div className="text-center font-semibold text-gray-900 dark:text-white">Child</div>
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {/* Avatar picker */}
+              <div className="mb-5 mt-5">
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2 ml-1">Choose Avatar</label>
+                <div className="grid grid-cols-4 gap-3 bg-gray-50 dark:bg-gray-900/40 p-4 rounded-2xl border border-gray-100 dark:border-gray-700/50">
+                  {avatars.map(a => (
+                    <button
+                      key={a}
+                      type="button"
+                      onClick={() => setAvatar(a)}
+                      className={`text-3xl h-12 w-full flex items-center justify-center rounded-xl border transition-all ${
+                        avatar === a
+                          ? 'bg-white dark:bg-gray-700 shadow-md ring-2 ring-primary-500 scale-110'
+                          : 'opacity-70 hover:opacity-100 border-transparent'
+                      }`}
+                    >
+                      {a}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Payment settings – ONLY for children (they receive allowance) */}
+              {role === 'child' && (
+                <>
+                  {/* Payment method */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2 ml-1">
+                      Payment Method
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'swish', label: 'Swish' },
+                        { id: 'venmo', label: 'Venmo' },
+                        { id: 'cashapp', label: 'Cash App' },
+                      ].map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => setPaymentMethod(m.id as PaymentMethod)}
+                          className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                            paymentMethod === m.id
+                              ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
+                              : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200'
+                          }`}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Currency */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2 ml-1">
+                      Currency
+                    </label>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setCurrency('SEK')}
+                        className={`flex-1 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                          currency === 'SEK'
+                            ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
+                            : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200'
+                        }`}
+                      >
+                        SEK (kr)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCurrency('USD')}
+                        className={`flex-1 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                          currency === 'USD'
+                            ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
+                            : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200'
+                        }`}
+                      >
+                        USD ($)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Payment handle */}
+                  <div className="mb-6 animate-in fade-in slide-in-from-top-2">
+                    <Input
+                      label={paymentLabel}
+                      required
+                      type={paymentMethod === 'swish' ? 'tel' : 'text'}
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder={paymentPlaceholder}
+                    />
+                    <p className="text-xs text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 p-2 rounded-lg inline-block w-full">
+                      Required for parents to send allowance.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              <Button type="submit" fullWidth size="lg" className="mt-4">
+                <UserPlus className="w-5 h-5" />
+                {isFirstRun ? 'Start App' : 'Create Account'}
+              </Button>
+            </form>
+          </div>
+        </Card>
+      </div>
     </div>
   );
 };
@@ -158,63 +284,85 @@ export const Login: React.FC<LoginProps> = ({ users, onLogin }) => {
            {/* Back Button */}
           <button 
             onClick={() => { setSelectedUser(null); setPin(''); }} 
-            className="absolute top-4 left-4 text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors"
+            className="absolute left-4 top-4 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
           >
-            <ChevronLeft size={24} />
+            <ChevronLeft className="w-5 h-5" />
           </button>
 
-          <div className="text-7xl mb-4 drop-shadow-xl animate-bounce-slow">{selectedUser.avatar}</div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Hello {selectedUser.name}!</h2>
-          <p className="text-gray-500 dark:text-gray-400 mb-8 text-sm">Enter your PIN to continue</p>
-          
-          <form onSubmit={handlePinSubmit} className="px-4">
-            <div className="mb-8 relative max-w-[200px] mx-auto">
-              <input
-                autoFocus
+          <div className="flex flex-col items-center gap-3">
+            <div className="text-6xl mb-4 transform transition-transform group-hover:scale-110 duration-300">
+              {selectedUser.avatar}
+            </div>
+            <div className="font-bold text-xl text-gray-900 dark:text-white">
+              {selectedUser.name}
+            </div>
+            <form onSubmit={handlePinSubmit} className="w-full max-w-xs mx-auto mt-4">
+              <Input
+                label="Enter PIN"
                 type="password"
                 maxLength={4}
+                pattern="\d{4}"
                 value={pin}
                 onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-                className="w-full text-center text-4xl font-bold tracking-[0.5em] border-b-2 border-gray-200 dark:border-gray-600 focus:border-primary-500 dark:focus:border-primary-400 outline-none bg-transparent text-gray-900 dark:text-white py-2 transition-all"
-                placeholder="••••"
+                className="text-center tracking-[0.5em] text-lg"
               />
-              {error && <p className="absolute w-full text-red-500 text-xs font-bold mt-3 animate-pulse">{error}</p>}
-            </div>
-            <Button type="submit" fullWidth size="lg" className="rounded-full">
-              <Lock className="w-4 h-4" /> Unlock
-            </Button>
-          </form>
+              {error && (
+                <p className="text-xs text-red-500 mt-2">{error}</p>
+              )}
+              <Button type="submit" fullWidth size="lg" className="mt-4">
+                <Check className="w-5 h-5" />
+                Continue
+              </Button>
+            </form>
+          </div>
         </Card>
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto">
-      <div className="text-center mb-12">
-        <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 dark:text-white tracking-tight mb-4">Who is using Veckopeng?</h1>
-        <p className="text-lg text-gray-500 dark:text-gray-400">Select your profile to log in</p>
-      </div>
-      
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {users.map(user => (
-          <Card
-            key={user.id}
-            variant="interactive"
-            onClick={() => setSelectedUser(user)}
-            className="flex flex-col items-center justify-center py-8 group"
-          >
-            <div className="text-6xl mb-4 transform transition-transform group-hover:scale-110 duration-300">{user.avatar}</div>
-            <div className="font-bold text-xl text-gray-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">{user.name}</div>
-            <span className={`mt-2 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-              user.role === 'parent' 
-                ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' 
-                : 'bg-pink-50 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300'
-            }`}>
-              {user.role}
-            </span>
-          </Card>
-        ))}
+    <div className="min-h-screen flex items-center justify-center py-6">
+      <div className="w-full max-w-md">
+        <Card className="relative overflow-hidden">
+          <div className="absolute -top-16 -right-16 w-40 h-40 bg-primary-500/10 rounded-full blur-3xl" />
+          <div className="absolute -bottom-16 -left-16 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl" />
+
+          <div className="relative">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary-500 text-white text-sm">
+                <UserPlus className="w-4 h-4" />
+              </span>
+              Who&apos;s managing chores today?
+            </h2>
+            <p className="text-gray-500 dark:text-gray-400 mb-5">
+              Tap your profile to log in with your PIN.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              {users.map((user) => (
+                <button
+                  key={user.id}
+                  className="group flex flex-col items-center gap-2 p-4 rounded-2xl border border-gray-200 dark:border-gray-700 hover:border-primary-500 hover:bg-primary-50/50 dark:hover:bg-primary-900/10 transition-all"
+                  onClick={() => setSelectedUser(user)}
+                >
+                  <div className="text-6xl mb-4 transform transition-transform group-hover:scale-110 duration-300">
+                    {user.avatar}
+                  </div>
+                  <div className="font-bold text-xl text-gray-900 dark:text-white group-hover:text-primary-400 transition-colors">
+                    {user.name}
+                  </div>
+                  <span className={`mt-2 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                    user.role === 'parent' 
+                      ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' 
+                      : 'bg-pink-50 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300'
+                  }`}>
+                    {user.role}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </Card>
       </div>
     </div>
   );
