@@ -25,10 +25,24 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setLoaded(true);
   };
 
+  /**
+   * Safely merge partial state updates.
+   *
+   * IMPORTANT:
+   * We must use the functional form of setState so that
+   * multiple calls in quick succession (e.g. updating
+   * both users and tasks) don't overwrite each other.
+   */
   const setPartial = async (update: Partial<AppState>) => {
-    const merged = { ...state, ...update };
-    setState(merged);
-    await saveState(merged);
+    let mergedForSave: AppState = DEFAULT_STATE;
+
+    setState((prev) => {
+      const merged = { ...prev, ...update };
+      mergedForSave = merged;
+      return merged;
+    });
+
+    await saveState(mergedForSave);
   };
 
   if (!loaded) {
