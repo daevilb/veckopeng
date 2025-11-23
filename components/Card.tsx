@@ -1,30 +1,31 @@
 import React from 'react';
+import clsx from 'clsx';
 
-interface CardProps {
+interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  variant?: 'default' | 'interactive';
   children: React.ReactNode;
   className?: string;
-  onClick?: () => void;
-  variant?: 'default' | 'glass' | 'interactive';
 }
 
-export const Card: React.FC<CardProps> = ({ 
-  children, 
-  className = '', 
-  onClick,
-  variant = 'default' 
+export const Card: React.FC<CardProps> = ({
+  variant = 'default',
+  children,
+  className,
+  ...props
 }) => {
-  const variants = {
-    default: "bg-white dark:bg-dark-card shadow-sm dark:shadow-none border border-gray-100 dark:border-dark-border",
-    glass: "bg-white/80 dark:bg-dark-card/80 backdrop-blur-md border border-white/20 dark:border-gray-700 shadow-xl",
-    interactive: "bg-white dark:bg-dark-card shadow-sm hover:shadow-md dark:hover:border-primary-500/50 border border-gray-100 dark:border-dark-border transition-all cursor-pointer hover:-translate-y-0.5",
-  };
-
   return (
-    <div 
-      onClick={onClick}
-      className={`rounded-2xl p-6 ${variants[variant]} ${className}`}
+    <div
+      {...props}
+      className={clsx(
+        'rounded-2xl border bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 shadow-sm transition-all duration-200',
+        {
+          'hover:shadow-lg hover:border-primary-400/50 cursor-pointer hover:-translate-y-0.5':
+            variant === 'interactive',
+        },
+        className
+      )}
     >
-      {children}
+      <div className="p-5">{children}</div>
     </div>
   );
 };
