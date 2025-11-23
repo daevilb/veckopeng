@@ -14,7 +14,7 @@ interface TaskManagerProps {
   currentUser: User;
   users: User[];
   tasks: Task[];
-  onUpdateState: (state: Partial<AppState>) => void;
+  onStateChange: (state: Partial<AppState>) => void | Promise<void>;
 }
 
 export const TaskManager: React.FC<TaskManagerProps> = ({ currentUser, users, tasks, onUpdateState }) => {
