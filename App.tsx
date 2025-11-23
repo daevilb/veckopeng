@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AppState, User, Task } from './types';
+import { AppState, User } from './types';
 import { fetchState, saveState } from './services/api';
 import { Setup, Login } from './components/Auth';
 import { Layout } from './components/Layout';
@@ -9,89 +9,144 @@ import { ThemeProvider } from './components/ThemeContext';
 function AppContent() {
   const [state, setState] = useState<AppState | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'tasks' | 'family'>('home');
   const [loading, setLoading] = useState(true);
 
+  // Load state from backend on first render
   useEffect(() => {
-    loadData();
+    const load = async () => {
+      try {
+        const data = await fetchState();
+        setState(data);
+      } catch (error) {
+        console.error('Failed to load state:', error);
+        // Fallback to empty default state
+        const emptyState: AppState = {
+          users: [],
+          tasks: [],
+          theme: 'light',
+        };
+        setState(emptyState);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
   }, []);
 
-  const loadData = async () => {
-    const data = await fetchState();
-    setState(data);
-    setLoading(false);
-  };
-
-  const handleUpdateState = async (newState: Partial<AppState>) => {
+  const handleUpdateState = async (partial: Partial<AppState>) => {
     if (!state) return;
-    const updatedState = { ...state, ...newState };
-    setState(updatedState);
-    await saveState(updatedState);
+
+    const newState: AppState = {
+      ...state,
+      ...partial,
+    };
+
+    setState(newState);
+
+    try {
+      await saveState(newState);
+    } catch (error) {
+      console.error('Failed to save state:', error);
+    }
   };
 
-  const handleSetupComplete = (firstUser: User) => {
-    handleUpdateState({ users: [firstUser] });
-    setCurrentUser(firstUser);
+  const handleInitialUserComplete = async (user: User) => {
+    const baseState: AppState =
+      state ?? {
+        users: [],
+        tasks: [],
+        theme: 'light',
+      };
+
+    const newState: AppState = {
+      ...baseState,
+      users: [...baseState.users, user],
+    };
+
+    setState(newState);
+    setCurrentUser(user);
+
+    try {
+      await saveState(newState);
+    } catch (error) {
+      console.error('Failed to save initial user:', error);
+    }
   };
 
-  if (loading) {
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setActiveTab('home');
+  };
+
+  // -------------------
+  // LOADING SCREEN
+  // -------------------
+  if (loading || !state) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-dark-bg flex items-center justify-center">
-        <div className="flex flex-col items-center animate-pulse">
-          <div className="text-primary-600 dark:text-primary-400 font-bold text-2xl mb-2">Veckopeng</div>
-          <div className="text-gray-400 text-sm">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-200">
+        <div className="text-center space-y-3">
+          <div className="text-4xl">💫</div>
+          <div className="text-sm text-slate-400">Loading your family dashboard...</div>
         </div>
       </div>
     );
   }
 
-  if (!state) return <div>Error loading app state.</div>;
-
-  // 1. First Time Setup
+  // -------------------
+  // FIRST RUN → SETUP PARENT
+  // -------------------
   if (state.users.length === 0) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-dark-bg flex items-center justify-center p-6">
-        <Setup isFirstRun={true} onComplete={handleSetupComplete} />
-      </div>
-    );
+    return <Setup isFirstRun={true} onComplete={handleInitialUserComplete} />;
   }
 
-  // 2. Login Screen
+  // -------------------
+  // NO USER LOGGED IN → LOGIN VIEW
+  // -------------------
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-dark-bg flex items-center justify-center p-6 transition-colors duration-300">
-        <Login users={state.users} onLogin={setCurrentUser} />
-      </div>
+      <Login
+        users={state.users}
+        onLogin={(user) => {
+          setCurrentUser(user);
+          setActiveTab('home');
+        }}
+      />
     );
   }
 
-  // 3. Main App
+  // -------------------
+  // MAIN APP LAYOUT
+  // -------------------
   return (
-    <Layout 
-      currentUser={currentUser} 
-      activeTab={activeTab} 
+    <Layout
+      currentUser={currentUser}
+      activeTab={activeTab}
       onTabChange={setActiveTab}
-      onLogout={() => setCurrentUser(null)}
+      onLogout={handleLogout}
     >
       {activeTab === 'home' && (
-        <HomeDashboard 
-          currentUser={currentUser} 
-          users={state.users} 
+        <HomeDashboard
+          currentUser={currentUser}
+          users={state.users}
           tasks={state.tasks}
           onUpdateUsers={(users) => handleUpdateState({ users })}
-          onNavigate={setActiveTab}
+          onNavigate={(tab) => setActiveTab(tab as 'home' | 'tasks' | 'family')}
         />
       )}
+
       {activeTab === 'tasks' && (
-        <TaskManager 
+        <TaskManager
           currentUser={currentUser}
           users={state.users}
           tasks={state.tasks}
           onStateChange={handleUpdateState}
         />
       )}
+
       {activeTab === 'family' && currentUser.role === 'parent' && (
-        <FamilyManager 
+        <FamilyManager
           users={state.users}
           onUpdateUsers={(users) => handleUpdateState({ users })}
         />
