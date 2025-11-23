@@ -28,9 +28,18 @@ export const Layout: React.FC<LayoutProps> = ({
   const [isScrolled, setIsScrolled] = useState(false);
   const { state } = useAppState();
 
-  // Count pending tasks (for the whole family)
+  // Count tasks that are relevant for the current user:
+  // - Parent: tasks waiting_for_approval
+  // - Child: own tasks that are still pending
   const pendingCount =
-    state?.tasks?.filter((t: any) => t.status === "pending").length ?? 0;
+    state?.tasks?.filter((t: any) => {
+      if (!currentUser) return false;
+      if (currentUser.role === "parent") {
+        return t.status === "waiting_for_approval";
+      } else {
+        return t.assignedToId === currentUser.id && t.status === "pending";
+      }
+    }).length ?? 0;
 
   // Tabs are stable and never disappear when clicking around.
   // Only rule: "Family" is visible for parents, hidden for children.
