@@ -18,11 +18,12 @@ const AlienEasterEgg = () => {
   useEffect(() => {
     const timeout = setTimeout(() => {
       setStage('walking-in');
-      setTimeout(() => setStage('dropping'), 2200);
-      setTimeout(() => setStage('walking-out'), 3900);
-      setTimeout(() => setStage('bag-only'), 5400);
-      setTimeout(() => setStage('idle'), 12000);
-    }, 1500);
+
+      setTimeout(() => setStage('dropping'), 2000);
+      setTimeout(() => setStage('walking-out'), 3500);
+      setTimeout(() => setStage('bag-only'), 5000);
+      setTimeout(() => setStage('idle'), 11000);
+    }, 2000);
 
     return () => clearTimeout(timeout);
   }, []);
@@ -31,43 +32,40 @@ const AlienEasterEgg = () => {
 
   return (
     <div className="hidden md:block fixed bottom-16 right-16 pointer-events-none z-40">
-      <div className="relative h-32 w-40">
-        {/* Coffee cup dropping */}
-        {(stage === 'dropping' || stage === 'walking-out' || stage === 'bag-only') && (
-          <div className="absolute bottom-0 right-0 animate-bounce-in">
-            <div className="relative">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/40">
-                <Coffee className="text-white" size={20} />
-              </div>
-              <div className="absolute -top-6 right-0 text-[11px] bg-slate-900/90 text-amber-100 px-3 py-1.5 rounded-full shadow-md border border-amber-500/40">
-                <span className="font-semibold">Thanks!</span>
-              </div>
-            </div>
-          </div>
-        )}
+      <div className="relative h-24 w-40">
+        {/* Ground shimmer */}
+        <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-r from-emerald-500/0 via-emerald-500/20 to-emerald-500/0 blur-lg" />
 
-        {/* Alien walking */}
-        {(stage === 'walking-in' || stage === 'walking-out') && (
-          <div
-            className={`absolute bottom-0 left-0 transition-transform duration-1000 ${
-              stage === 'walking-in' ? 'translate-x-24' : 'translate-x-40 opacity-0'
-            }`}
-          >
-            <div className="flex items-end gap-2">
-              <div className="text-4xl drop-shadow-lg">👽</div>
-              <div className="w-10 h-12 bg-slate-900/90 rounded-xl border border-emerald-400/40 flex items-center justify-center text-xs text-emerald-300">
-                ☕
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Alien */}
+        <div
+          className={`absolute text-3xl transition-all duration-[4000ms] ease-linear ${
+            stage === 'walking-in'
+              ? 'left-[250px] opacity-100'
+              : stage === 'dropping'
+              ? 'left-1/2 translate-x-[-30px] opacity-100'
+              : stage === 'walking-out'
+              ? 'left-[-50px] opacity-0'
+              : stage === 'bag-only'
+              ? 'left-[-50px] opacity-0'
+              : 'left-[250px] opacity-0'
+          }`}
+        >
+          👽
+        </div>
+
+        {/* Coffee cup dropping */}
+        <div
+          className={`absolute left-1/2 -translate-x-1/2 transition-all duration-700 ${
+            stage === 'dropping' ? 'top-6 opacity-100' : 'top-[-10px] opacity-0'
+          }`}
+        >
+          ☕
+        </div>
 
         {/* Static coffee cup on the ground */}
         {stage === 'bag-only' && (
-          <div className="absolute bottom-0 right-0">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/40">
-              <Coffee className="text-white" size={18} />
-            </div>
+          <div className="absolute left-1/2 -translate-x-1/2 top-6">
+            ☕
           </div>
         )}
       </div>
@@ -112,8 +110,8 @@ const Layout: React.FC<LayoutProps> = ({ children, currentUser, activeTab, onTab
               <div>
                 <div className="flex items-center gap-2">
                   <h1 className="text-lg font-bold tracking-tight text-slate-50">Veckopeng</h1>
-                  <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/40">
-                    v1.1
+                  <span className="inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                    BETA
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 hidden sm:block">
@@ -131,7 +129,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentUser, activeTab, onTab
               >
                 {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
               </button>
-              
+
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/70 border border-slate-700/70">
                 <span className="text-lg">{currentUser.avatar}</span>
                 <div className="leading-tight">
@@ -166,13 +164,11 @@ const Layout: React.FC<LayoutProps> = ({ children, currentUser, activeTab, onTab
             </div>
           </div>
 
-          <div className="animate-in fade-in duration-500 slide-in-from-bottom-2">
-            {children}
-          </div>
+          <div className="animate-in fade-in duration-500 slide-in-from-bottom-2">{children}</div>
         </div>
       </main>
 
-      {/* Footer with BuyMeACoffee link for parents */}
+      {/* Footer with BuyMeACoffee link – now visible även på mobil */}
       <footer className="block pb-24 md:pb-8 pt-4 text-center relative">
         {currentUser.role === 'parent' && (
           <>
@@ -190,12 +186,13 @@ const Layout: React.FC<LayoutProps> = ({ children, currentUser, activeTab, onTab
         )}
       </footer>
 
-      {/* Bottom Navigation for mobile */}
-      <nav className="fixed bottom-0 inset-x-0 z-30 border-t border-slate-800/80 bg-slate-950/95 backdrop-blur-xl md:hidden">
-        <div className="max-w-md mx-auto flex items-center justify-between px-4 py-3">
-          {tabs.filter(t => t.show).map((tab) => {
+      {/* Mobile bottom nav */}
+      <nav className="md:hidden fixed bottom-0 w-full bg-white/90 dark:bg-slate-950/95 border-t border-slate-200/60 dark:border-slate-800/80 backdrop-blur-xl px-4 py-2 z-20 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] dark:shadow-none">
+        <div className="max-w-md mx-auto flex items-center justify-between gap-2">
+          {tabs.filter((t) => t.show).map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
+
             return (
               <button
                 key={tab.id}
@@ -207,6 +204,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentUser, activeTab, onTab
                     isActive ? 'scale-105 bg-emerald-500/15' : 'opacity-0'
                   }`}
                 />
+
                 <div
                   className={`relative z-10 w-9 h-9 rounded-2xl flex items-center justify-center transition-all duration-300 ${
                     isActive
@@ -216,6 +214,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentUser, activeTab, onTab
                 >
                   <Icon size={18} />
                 </div>
+
                 <span
                   className={`relative z-10 text-[11px] font-medium ${
                     isActive ? 'text-emerald-300' : 'text-slate-400'
