@@ -110,7 +110,7 @@ VP_PORT = 3000
 VP_DATA_PATH = /data  
 
 ### Example docker-compose.yml
-
+```yaml
 services:  
   veckopeng:  
     image: veckopeng:latest  
@@ -124,7 +124,7 @@ services:
       - ./data:/data  
     restart: unless-stopped
 
----
+```
 
 ## 🧱 Tech Stack
 
