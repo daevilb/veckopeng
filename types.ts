@@ -9,7 +9,7 @@ export interface User {
   role: Role;
   pin: string;
   avatar: string; // Emoji char
-  phoneNumber?: string;
+  phoneNumber?: string; // phone / username / $cashtag depending on payment method
   paymentMethod?: PaymentMethod;
   currency?: Currency;
   balance: number; // Current unpaid allowance
