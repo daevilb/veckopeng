@@ -11,7 +11,7 @@ type TabConfig = {
 
 interface LayoutProps {
   children: React.ReactNode;
-  currentUser: any; // keep generic to avoid type mismatch with types.ts
+  currentUser: any; // generic to avoid mismatch with types.ts
   activeTab: string;
   onTabChange: (tab: string) => void;
   onLogout: () => void;
@@ -28,9 +28,9 @@ export const Layout: React.FC<LayoutProps> = ({
   const [isScrolled, setIsScrolled] = useState(false);
   const { state } = useAppState();
 
-  // Count pending tasks for the current family
+  // Count pending tasks (for the whole family)
   const pendingCount =
-    state?.tasks?.filter((t) => t.status === "pending").length ?? 0;
+    state?.tasks?.filter((t: any) => t.status === "pending").length ?? 0;
 
   // Tabs are stable and never disappear when clicking around.
   // Only rule: "Family" is visible for parents, hidden for children.
