@@ -4,6 +4,8 @@
 
 A modern, family-friendly app for managing chores, weekly allowance, and payment deep links — designed for self-hosting, privacy, and simplicity.
 
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support-yellow?style=for-the-badge&logo=buy-me-a-coffee)](https://buymeacoffee.com/andersbergz)
+
 ---
 
 ## 🌟 Overview
