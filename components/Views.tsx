@@ -4,21 +4,19 @@ import { Button } from './Button';
 import { Setup } from './Auth';
 import { Input } from './Input';
 import { Card } from './Card';
-import { 
+import {
   CheckCircle,
   Clock,
   DollarSign,
   Trash2,
   Plus,
   X,
-  ArrowRight,
   User as UserIcon,
-  ExternalLink,
   AlertCircle,
   Wallet,
   CheckSquare,
   Phone,
-  Users
+  Users,
 } from 'lucide-react';
 import { generateId } from '../utils/id';
 
@@ -39,7 +37,9 @@ export const TaskManager: React.FC<TaskManagerProps> = ({
   tasks,
   onStateChange,
 }) => {
-  const [filter, setFilter] = useState<'all' | 'pending' | 'waiting_for_approval' | 'completed'>('all');
+  const [filter, setFilter] = useState<
+    'all' | 'pending' | 'waiting_for_approval' | 'completed'
+  >('all');
   const [assigneeFilter, setAssigneeFilter] = useState<string>('all');
   const [isCreating, setIsCreating] = useState(false);
 
@@ -207,7 +207,10 @@ export const TaskManager: React.FC<TaskManagerProps> = ({
             </div>
 
             {/* Task Form */}
-            <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-12 gap-4">
+            <form
+              onSubmit={handleCreate}
+              className="grid grid-cols-1 md:grid-cols-12 gap-4"
+            >
               <div className="md:col-span-6">
                 <Input
                   required
@@ -625,11 +628,9 @@ export const HomeDashboard: React.FC<{
               In Review
             </h3>
 
-            <>
-              <p className="text-gray-500 dark:text-gray-400 text-sm">
-                Waiting for parent approval.
-              </p>
-            </>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">
+              Waiting for parent approval.
+            </p>
           </Card>
         </div>
       </div>
