@@ -9,14 +9,13 @@ A modern, family-friendly app for managing chores, weekly allowance, and payment
 ## 🌟 Overview
 
 **Veckopeng** is a lightweight but powerful family app where parents can:
-
 - Create and assign tasks (chores)
 - Set reward amounts
 - Track each child’s weekly allowance
 - Trigger payment directly from their phone’s payment app
 
 Children complete tasks → parents approve them → the reward is added to the child’s balance.  
-At the end of the week, the parent taps **Pay**, and Veckopeng opens the payment app with the **phone number**, **amount**, and optional **message** pre-filled.
+At the end of the week, the parent taps **Pay**, and Veckopeng opens the payment app with the **phone number**, **amount**, and optional **message** prefilled.
 
 Veckopeng is built for **self-hosting** using Docker and keeps all your data in your own environment.
 
@@ -24,208 +23,163 @@ Veckopeng is built for **self-hosting** using Docker and keeps all your data in 
 
 ## 📚 Table of Contents
 
-- [Features](#-features)
-- [Payment Deep Links](#-payment-deep-links)
-- [Self-Hosted by Design](#-self-hosted-by-design)
-- [Getting Started](#-getting-started)
-- [Configuration](#-configuration)
-- [Tech Stack](#-tech-stack)
-- [Contributing](#-contributing)
-- [Support](#-support)
-- [License](#-license)
-- [Roadmap](#-roadmap)
+- Features
+- Payment Deep Links
+- Self-Hosted by Design
+- Getting Started
+- Configuration
+- Tech Stack
+- Contributing
+- Support
+- License
+- Roadmap
 
 ---
 
 ## ✨ Features
 
 ### 👨‍👩‍👧 Family Management
-
-- Add **parents** and **children**
+- Add parents and children
 - Assign phone numbers per user
 - Role-based experience:
   - Children see a simplified “My tasks / My week” view
   - Parents can manage tasks, approvals, and payments
 
 ### 📝 Task & Reward System
-
-- Create chores with:
-  - Title and description
-  - Optional category
-  - Reward amount
-- Children mark tasks as **completed**
-- Tasks remain **pending** until approved or rejected by a parent
-- Approved tasks automatically increase the child’s running balance
+- Create chores with title, description, and reward amount
+- Children mark tasks as completed
+- Tasks stay pending until approved or rejected
+- Approved tasks increase the child’s weekly balance
 
 ---
 
 ## 💸 Payment Deep Links
 
-Veckopeng uses **payment deep links**, similar to the mechanism used by Swish and other mobile payment apps.
+Veckopeng uses **payment deep links**, similar to Swish and other mobile payment apps.
 
-This allows Veckopeng to open a payment app on your device with:
-
-- The child’s phone number pre-filled  
-- The total amount pre-filled  
-- An optional message (e.g. “Weekly allowance”)
+This opens a payment app with:
+- The child’s phone number
+- The amount
+- An optional message
 
 ### Current & Upcoming Providers
+- Swish-style deep links (supported)
+- More deep link providers planned (MobilePay, Vipps, etc.)
 
-- ✅ Swish-style deep link support  
-- 🚧 Work in progress: support for additional providers that use URL schemes / payment deep links  
-  (e.g. MobilePay, Vipps, and other mobile payment apps that support opening with pre-filled phone number and amount)
-
-The core idea is to keep the payment flow:
-
-> Tap once in Veckopeng → your payment app opens → confirm → done.
+Flow:
+**Tap once → Your payment app opens → Confirm → Done**
 
 ---
 
 ## 🏡 Self-Hosted by Design
 
-Veckopeng is built for people who like to run their own services:
+- Runs as a Docker container  
+- Persistent storage  
+- No external cloud backend  
+- Ideal for homelab, NAS, or VPS setups  
 
-- 🐳 Runs as a Docker container
-- 💾 Uses persistent storage so your data survives restarts
-- 🔒 No external cloud backend required
-- 🌐 Ideal for homelab setups, NAS installations, or small VPS servers
-
-You control:
-
-- Where it runs  
-- Who has access  
-- How it integrates into your home environment  
-
-Inside the app, a small, discrete **“Buy Me a Coffee”** link is available for parents if you want to support the development of the project. It is not shown in child views.
+A discreet **Buy Me a Coffee** link is visible only to parent profiles.
 
 ---
 
 ## 🚀 Getting Started
 
-```bash
-# 1. Clone the repository
-git clone https://github.com/daevilb/veckopeng.git
+### 1. Clone the repository
+git clone https://github.com/daevilb/veckopeng.git  
 cd veckopeng
 
-# 2. Start via Docker Compose
-# Make sure Docker and Docker Compose are installed, then run:
+### 2. Start via Docker Compose
 docker compose up -d
 
-# 3. Open the app
-# Then open your browser and go to:
-# http://localhost:3000
+### 3. Open the app
+Open your browser and go to:  
+http://localhost:3000
 
-# On first launch, you will:
-#  - Create the first parent account
-#  - Set up your family members
-#  - Start creating tasks and rewards
+On first launch:
+1. Create the first parent account  
+2. Add your family members  
+3. Start creating tasks and rewards
 
-⚙️ Configuration
+---
 
-Veckopeng is designed to run with sensible defaults, but you can customize it using environment variables.
+## ⚙️ Configuration
 
-Variable	Default	Description
-VP_PORT	3000	Port the app listens on
-VP_DATA_PATH	/data	Directory used for persistent data
+Environment variables:
 
-Example Docker Compose snippet:
-services:
-  veckopeng:
-    image: veckopeng:latest
-    container_name: veckopeng
-    ports:
-      - "3000:3000"
-    environment:
-      - VP_PORT=3000
-      - VP_DATA_PATH=/data
-    volumes:
-      - ./data:/data
+VP_PORT = 3000  
+VP_DATA_PATH = /data  
+
+### Example docker-compose.yml
+
+services:  
+  veckopeng:  
+    image: veckopeng:latest  
+    container_name: veckopeng  
+    ports:  
+      - "3000:3000"  
+    environment:  
+      - VP_PORT=3000  
+      - VP_DATA_PATH=/data  
+    volumes:  
+      - ./data:/data  
     restart: unless-stopped
 
-Adapt the image name and paths to match your actual build/publish setup.
+---
 
-🧱 Tech Stack
+## 🧱 Tech Stack
 
-Frontend: React + TypeScript
+- React + TypeScript  
+- Local/volume-based persistence  
+- Node runtime  
+- Docker containerization  
+- Payment deep links (Swish-style)  
+- Responsive UI (mobile + desktop)
 
-State & Storage: Local persistence (file/volume-backed)
+---
 
-Runtime: Node / modern frontend tooling
+## 🤝 Contributing
 
-Containerization: Docker
+PRs and suggestions are welcome!
 
-Payments: Deep link / URL scheme based payment flows (Swish-style and similar)
+The goal is to make Veckopeng:
+**As smooth, fun, and useful as possible — while remaining simple to self-host.**
 
-UI: Responsive layout for both mobile and desktop
+---
 
-🤝 Contributing
+## ☕ Support
 
-Contributions, ideas, and feedback are very welcome!
+If you enjoy Veckopeng:
+- Use the Buy Me a Coffee link in the app  
+- Share the project  
+- Suggest features  
 
-You can:
+Your support helps development continue.
 
-Open issues for bugs or feature requests
+---
 
-Submit pull requests with improvements
+## 📜 License
 
-Propose UX/UI enhancements, new payment providers, or quality-of-life features
+Veckopeng is licensed under **AGPL-3.0**.
 
-The long-term goal is to make Veckopeng:
+- LICENSE → Full AGPL text  
+- COMMERCIAL_LICENSE.md → For commercial use outside AGPL terms  
 
-As smooth and fun as possible for families, while remaining simple to self-host.
+Summary:
+✔ Free to use  
+✔ Free to modify  
+✔ Free to self-host  
+❗ Networked deployments must remain open-source  
+❗ Commercial closed-source use requires a commercial license  
 
-☕ Support
+---
 
-If you enjoy using Veckopeng and want to support the ongoing development:
+## 🛣️ Roadmap
 
-Use the Buy Me a Coffee link available in the parent view inside the app
+Upcoming improvements:
+- Light / Dark mode  
+- Modernized UI  
+- Improved onboarding  
+- Additional payment providers  
+- More tools for families  
 
-Share the project with others who might find it useful
-
-Provide feedback and feature ideas via issues
-
-Every bit of support helps to keep the project evolving.
-
-📜 License
-
-Veckopeng is open source and released under the GNU Affero General Public License v3 (AGPL-3.0).
-
-See LICENSE
- for the full license text.
-
-For commercial use cases, including internal business use that does not wish to follow AGPL terms, a separate commercial license is available. See COMMERCIAL_LICENSE.md
- for details.
-
-In short:
-
-✅ You can use, modify, and self-host the app under AGPL-3.0
-
-✅ Changes and improvements distributed or used over a network must remain open source under the same license
-
-🔒 Commercial use outside AGPL terms requires a separate agreement
-
-🛣️ Roadmap
-
-I’m actively working on improving Veckopeng and look forward to:
-
-Enhancing the overall UI/UX and layout, especially on larger screens
-
-Adding light/dark theme support
-
-Improving the onboarding flow for parents and children
-
-Supporting additional payment providers via deep links
-
-Adding more quality-of-life features for families and self-hosters
-
-If you have ideas or features you would love to see, please open an issue or reach out — the goal is to make this app as good and useful as possible for real families.
-
-
-
-
-
-
-
-
-
-
+Have ideas? Open an issue!
