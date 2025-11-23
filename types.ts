@@ -1,4 +1,6 @@
 export type Role = 'parent' | 'child';
+export type PaymentMethod = 'swish' | 'venmo' | 'cashapp';
+export type Currency = 'SEK' | 'USD';
 export type TaskStatus = 'pending' | 'waiting_for_approval' | 'completed';
 
 export interface User {
@@ -8,6 +10,8 @@ export interface User {
   pin: string;
   avatar: string; // Emoji char
   phoneNumber?: string;
+  paymentMethod?: PaymentMethod;
+  currency?: Currency;
   balance: number; // Current unpaid allowance
   totalEarned: number; // Lifetime earnings
 }
@@ -15,7 +19,7 @@ export interface User {
 export interface Task {
   id: string;
   title: string;
-  description: string;
+  description?: string;
   reward: number;
   assignedToId: string;
   status: TaskStatus;
