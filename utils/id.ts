@@ -1,12 +1,8 @@
-export const generateId = () => {
-  try {
-    if (typeof crypto !== "undefined" && typeof (crypto as any).randomUUID === "function") {
-      return (crypto as any).randomUUID();
-    }
-  } catch {
-    // ignore
-  }
+// Simple unique ID generator for Veckopeng
+// Produces IDs like: "xk2fh8s9-1701239123"
 
-  // Fallback if crypto.randomUUID doesn't exist
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+export const generateId = (): string => {
+  const random = Math.random().toString(36).substring(2, 10);
+  const timestamp = Date.now().toString(36);
+  return `${random}-${timestamp}`;
 };
