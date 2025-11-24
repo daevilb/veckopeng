@@ -351,11 +351,23 @@ app.post('/api/tasks', (req, res) => {
 
     const { id, title, description, reward, assignedToId } = body;
 
-    if (!id || !title || !assignedToId) {
+    const trimmedTitle = typeof title === 'string' ? title.trim() : '';
+
+    if (!id || !trimmedTitle || !assignedToId) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const rewardInt = Number.isFinite(body.reward) ? Math.floor(body.reward) : 0;
+    const rewardNumber =
+      typeof reward === 'number' ? reward : Number((reward as any) ?? NaN);
+    const rewardInt = Number.isFinite(rewardNumber) ? Math.floor(rewardNumber) : 0;
+
+    if (rewardInt <= 0) {
+      return res.status(400).json({ error: 'Reward must be a positive number.' });
+    }
+
+    if (rewardInt > 1_000_000) {
+      return res.status(400).json({ error: 'Reward is unreasonably large.' });
+    }
     const now = Math.floor(Date.now() / 1000);
     const createdAt = typeof body.createdAt === 'number' ? body.createdAt : now;
     const status = body.status ?? 'pending';
@@ -372,7 +384,7 @@ app.post('/api/tasks', (req, res) => {
     ).run(
       id,
       familyId,
-      title,
+      trimmedTitle,
       description ?? null,
       rewardInt,
       assignedToId,
