@@ -1,304 +1,220 @@
-import React, { useEffect, useState } from 'react';
-import { User } from '../types';
-import { Home, CheckSquare, Users, LogOut, Moon, Sun, Coffee } from 'lucide-react';
-import { useTheme } from './ThemeContext';
+import React, { useEffect, useState } from "react";
+import { Home, CheckSquare, Users, LogOut, Smartphone, Coffee } from "lucide-react";
+import { useAppState } from "./StateProvider";
+
+type TabConfig = {
+  id: string;
+  label: string;
+  show: boolean;
+  icon: React.ComponentType<{ className?: string }>;
+};
 
 interface LayoutProps {
   children: React.ReactNode;
-  currentUser: User;
+  currentUser: any; // generic to avoid mismatch with types.ts
   activeTab: string;
   onTabChange: (tab: string) => void;
   onLogout: () => void;
 }
 
-// Alien Easter Egg Component
-const AlienEasterEgg = () => {
-  const [stage, setStage] = useState<'idle' | 'walking-in' | 'dropping' | 'walking-out' | 'bag-only'>('idle');
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-
-    if (stage === 'idle') {
-      timer = setTimeout(() => {
-        setVisible(true);
-        setStage('walking-in');
-      }, 4000);
-    } else if (stage === 'walking-in') {
-      timer = setTimeout(() => {
-        setStage('dropping');
-      }, 4000);
-    } else if (stage === 'dropping') {
-      timer = setTimeout(() => {
-        setStage('walking-out');
-      }, 1000);
-    } else if (stage === 'walking-out') {
-      timer = setTimeout(() => {
-        setStage('bag-only');
-        setVisible(false);
-      }, 4000);
-    }
-
-    return () => clearTimeout(timer);
-  }, [stage]);
-
-  if (!visible && stage !== 'bag-only') return null;
-
-  return (
-    <div className="pointer-events-none fixed bottom-14 left-1/2 -translate-x-1/2 z-50 w-[200px] h-[60px] overflow-visible">
-      {/* Alien */}
-      <div 
-        className={`absolute text-3xl transition-all duration-[4000ms] ease-linear ${
-          stage === 'walking-in' ? 'left-[250px] opacity-100' :
-          stage === 'dropping' ? 'left-1/2 translate-x-[-30px] opacity-100' :
-          stage === 'walking-out' ? 'left-[-50px] opacity-0' :
-          stage === 'bag-only' ? 'left-[-50px] opacity-0' :
-          'left-[250px] opacity-0'
-        }`}
-      >
-        👽
-      </div>
-
-      {/* Coffee cup dropping */}
-      <div 
-        className={`absolute left-1/2 -translate-x-1/2 transition-all duration-700 ${
-          stage === 'dropping' ? 'top-6 opacity-100' : 'top-[-10px] opacity-0'
-        }`}
-      >
-        ☕
-      </div>
-
-      {/* Static coffee cup on the ground */}
-      {stage === 'bag-only' && (
-        <div className="absolute left-1/2 -translate-x-1/2 top-6">
-          ☕
-        </div>
-      )}
-    </div>
-  );
-};
-
-const Layout: React.FC<LayoutProps> = ({ children, currentUser, activeTab, onTabChange, onLogout }) => {
-  const { isDarkMode, toggleTheme } = useTheme();
+// Named export (used by App.tsx: `import { Layout } from "./components/Layout"`)
+export const Layout: React.FC<LayoutProps> = ({
+  children,
+  currentUser,
+  activeTab,
+  onTabChange,
+  onLogout,
+}) => {
   const [isScrolled, setIsScrolled] = useState(false);
+  const { state } = useAppState();
 
-  const tabs = [
-    { id: 'home', label: currentUser.role === 'parent' ? 'Overview' : 'My Week', icon: Home, show: true },
-    { id: 'tasks', label: 'Tasks', icon: CheckSquare, show: true },
-    { id: 'family', label: 'Family', icon: Users, show: currentUser.role === 'parent' }
+  // Count tasks that are relevant for the current user:
+  // - Parent: tasks waiting_for_approval
+  // - Child: own tasks that are still pending
+  const pendingCount =
+    state?.tasks?.filter((t: any) => {
+      if (!currentUser) return false;
+      if (currentUser.role === "parent") {
+        return t.status === "waiting_for_approval";
+      } else {
+        return t.assignedToId === currentUser.id && t.status === "pending";
+      }
+    }).length ?? 0;
+
+  // Tabs are stable and never disappear when clicking around.
+  // Only rule: "Family" is visible for parents, hidden for children.
+  const tabs: TabConfig[] = [
+    {
+      id: "home",
+      label: currentUser?.role === "parent" ? "Overview" : "My Week",
+      icon: Home,
+      show: true,
+    },
+    {
+      id: "tasks",
+      label: "Tasks",
+      icon: CheckSquare,
+      show: true,
+    },
+    {
+      id: "family",
+      label: "Family",
+      icon: Users,
+      show: currentUser?.role === "parent",
+    },
   ];
+
+  const visibleTabs = tabs.filter((t) => t.show);
 
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 10);
     };
-
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const isParent = currentUser?.role === "parent";
+
+  const renderTabLabel = (tabId: string, label: string) => {
+    if (tabId !== "tasks" || pendingCount <= 0) {
+      return <span>{label}</span>;
+    }
+
+    return (
+      <span className="inline-flex items-center gap-1">
+        <span>{label}</span>
+        <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-emerald-500 text-[10px] font-bold text-slate-950 px-1">
+          {pendingCount}
+        </span>
+      </span>
+    );
+  };
+
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-100">
-      {/* Top Bar */}
-      <header className={`sticky top-0 z-30 transition-all duration-300 ${
-        isScrolled ? 'backdrop-blur-xl bg-slate-900/80' : 'bg-gradient-to-b from-slate-950/80 to-slate-900/40'
-      } border-b border-slate-800/60`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* Left: Logo & App Name */}
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/40">
-                <span className="text-xl font-black text-slate-950 drop-shadow-sm">V</span>
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-lg font-semibold tracking-tight text-slate-50 flex items-center gap-1.5">
-                    Veckopeng
-                    <span className="inline-flex items-center justify-center text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
-                      BETA
-                    </span>
-                  </h1>
-                </div>
-                <p className="text-xs text-slate-400">
-                  {currentUser.role === 'parent'
-                    ? 'Manage tasks & rewards for your family'
-                    : 'Complete tasks, earn your weekly allowance'}
-                </p>
-              </div>
+    <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
+      {/* Top bar */}
+      <header
+        className={`sticky top-0 z-30 border-b border-slate-800 bg-slate-950/90 backdrop-blur ${
+          isScrolled ? "shadow-lg shadow-slate-900/50" : ""
+        }`}
+      >
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-emerald-400 to-sky-500 flex items-center justify-center shadow-lg shadow-emerald-500/30">
+              <span className="text-xl">💰</span>
             </div>
-
-            {/* Desktop nav + actions */}
-            <div className="hidden md:flex items-center gap-4">
-              {/* Tabs */}
-              <nav className="flex items-center gap-1.5 px-1.5 py-1.5 rounded-full bg-slate-900/40 border border-slate-700/60 shadow-inner shadow-slate-950/60">
-                {tabs.filter(t => t.show).map(tab => {
-                  const Icon = tab.icon;
-                  const isActive = activeTab === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => onTabChange(tab.id)}
-                      className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
-                        isActive
-                          ? 'bg-emerald-500/90 text-slate-950 shadow-lg shadow-emerald-500/40'
-                          : 'text-slate-300/80 hover:bg-slate-800/80 hover:text-slate-50'
-                      }`}
-                    >
-                      <Icon size={14} className={isActive ? 'text-slate-950' : ''} />
-                      <span>{tab.label}</span>
-                    </button>
-                  );
-                })}
-              </nav>
-
-              {/* Theme toggle */}
-              <button
-                onClick={toggleTheme}
-                className="w-10 h-10 inline-flex items-center justify-center rounded-full bg-slate-900/60 border border-slate-700/70 hover:border-slate-500/80 hover:bg-slate-800/80 transition-colors duration-200 shadow-sm shadow-slate-950/40"
-                aria-label="Toggle theme"
-              >
-                <div className="relative w-5 h-5">
-                  <Moon
-                    className={`absolute inset-0 transition-all duration-300 ${
-                      isDarkMode ? 'opacity-100 rotate-0' : 'opacity-0 -rotate-90'
-                    }`}
-                    size={18}
-                  />
-                  <Sun
-                    className={`absolute inset-0 transition-all duration-300 ${
-                      isDarkMode ? 'opacity-0 rotate-90' : 'opacity-100 rotate-0'
-                    }`}
-                    size={18}
-                  />
-                </div>
-              </button>
-
-              {/* User info + logout */}
-              <div className="flex items-center gap-3 pl-4 border-l border-slate-800/70">
-                <div className="text-right">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-semibold text-slate-50">
-                      {currentUser.name}
-                    </span>
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-800/80 text-slate-200 border border-slate-700/70">
-                      {currentUser.role === 'parent' ? 'Parent' : 'Child'}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400">
-                    {currentUser.role === 'parent' ? 'Family administrator' : 'Task hero'}
-                  </p>
-                </div>
-                <button
-                  onClick={onLogout}
-                  className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-red-500/90 hover:bg-red-500 text-white shadow-md shadow-red-500/40 transition-colors duration-200"
-                  aria-label="Log out"
-                >
-                  <LogOut size={18} />
-                </button>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="font-semibold text-sm sm:text-base">
+                  Veckopeng
+                </h1>
+                {isParent && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                    <Smartphone className="h-3 w-3" />
+                    Parent mode
+                  </span>
+                )}
               </div>
-            </div>
-
-            {/* Mobile actions */}
-            <div className="md:hidden flex items-center gap-2">
-              <button
-                onClick={toggleTheme}
-                className="w-9 h-9 inline-flex items-center justify-center rounded-full bg-slate-900/80 border border-slate-700/70"
-                aria-label="Toggle theme"
-              >
-                <div className="relative w-5 h-5">
-                  <Moon
-                    className={`absolute inset-0 transition-all duration-300 ${
-                      isDarkMode ? 'opacity-100 rotate-0' : 'opacity-0 -rotate-90'
-                    }`}
-                    size={18}
-                  />
-                  <Sun
-                    className={`absolute inset-0 transition-all duration-300 ${
-                      isDarkMode ? 'opacity-0 rotate-90' : 'opacity-100 rotate-0'
-                    }`}
-                    size={18}
-                  />
-                </div>
-              </button>
-              <button
-                onClick={onLogout}
-                className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-red-500/90 hover:bg-red-500 text-white shadow-md shadow-red-500/40 transition-colors duration-200"
-                aria-label="Log out"
-              >
-                <LogOut size={18} />
-              </button>
+              <p className="text-[11px] text-slate-400">
+                Signed in as{" "}
+                <span className="font-medium text-slate-100">
+                  {currentUser?.name ?? "Unknown"}
+                </span>
+              </p>
             </div>
           </div>
+
+          <div className="flex items-center gap-2">
+            {/* Buy Me a Coffee – only for parents */}
+            {isParent && (
+              <a
+                href="https://www.buymeacoffee.com/daevilb"
+                target="_blank"
+                rel="noreferrer"
+                className="hidden sm:inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-200 hover:bg-amber-500/20 transition"
+              >
+                <Coffee className="h-3 w-3" />
+                Support dev
+              </a>
+            )}
+
+            {/* Logout */}
+            <button
+              type="button"
+              onClick={onLogout}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-600/60 bg-red-900/40 hover:bg-red-800/70 transition"
+              aria-label="Sign out"
+            >
+              <LogOut className="h-4 w-4 text-red-200" />
+            </button>
+          </div>
         </div>
+
+        {/* Desktop tab navigation */}
+        <nav className="hidden md:block border-t border-slate-800">
+          <div className="max-w-5xl mx-auto px-4 flex items-center gap-1">
+            {visibleTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => onTabChange(tab.id)}
+                  className={`relative flex items-center gap-2 px-3 py-2 text-xs font-medium transition ${
+                    isActive
+                      ? "text-emerald-300"
+                      : "text-slate-400 hover:text-slate-100"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {renderTabLabel(tab.id, tab.label)}
+                  {isActive && (
+                    <span className="absolute -bottom-px left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-400 via-sky-400 to-emerald-400" />
+                  )}
+                </button>
+              );
+            })}
+            <div className="flex-1" />
+          </div>
+        </nav>
       </header>
 
-      {/* Main content */}
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8">
-        <div className="animate-in fade-in duration-500 slide-in-from-bottom-2">
+      {/* Main content area */}
+      <main className="flex-1">
+        <div className="max-w-5xl mx-auto px-4 py-4 pb-20 md:pb-8">
           {children}
         </div>
       </main>
 
-      {/* Footer with BuyMeACoffee link for parents */}
-      <footer className="hidden md:block pb-8 pt-4 text-center relative">
-        {currentUser.role === 'parent' && (
-          <>
-            <a
-              href="https://buymeacoffee.com/andersbergz"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm text-gray-600 dark:text-gray-300 transition-all relative z-20 hover:opacity-80"
-            >
-              <Coffee size={14} className="text-amber-600 dark:text-amber-500" />
-              <span>Support the developer</span>
-            </a>
-            <AlienEasterEgg />
-          </>
-        )}
-      </footer>
-
       {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 w-full bg-white/90 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-800/80 flex items-center justify-evenly h-16 z-20 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] dark:shadow-none">
-        {tabs.filter(t => t.show).map(tab => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-
-          return (
-            <button
-              key={tab.id}
-              onClick={() => onTabChange(tab.id)}
-              className="relative flex flex-col items-center justify-center w-16 h-16"
-            >
-              <div
-                className={`absolute inset-0 transition-all duration-300 ${
-                  isActive ? 'scale-105 bg-emerald-500/15' : 'opacity-0'
-                }`}
-              />
-              <div
-                className={`relative z-10 w-9 h-9 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+      <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-800 bg-slate-950/95 backdrop-blur md:hidden">
+        <div className="max-w-5xl mx-auto flex items-stretch justify-around">
+          {visibleTabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => onTabChange(tab.id)}
+                className={`flex flex-col items-center justify-center flex-1 py-2 text-[11px] font-medium transition ${
                   isActive
-                    ? 'bg-emerald-500/90 text-slate-950 shadow-lg shadow-emerald-500/40 translate-y-[-3px]'
-                    : 'bg-slate-900/80 text-slate-300 border border-slate-700/80'
+                    ? "text-emerald-300"
+                    : "text-slate-400 hover:text-slate-100"
                 }`}
               >
-                <Icon size={18} />
-              </div>
-              <span
-                className={`relative z-10 mt-0.5 text-[10px] font-medium tracking-wide transition-all duration-300 ${
-                  isActive ? 'text-emerald-300' : 'text-slate-400'
-                }`}
-              >
-                {tab.label}
-              </span>
-            </button>
-          );
-        })}
+                <Icon className="h-5 w-5 mb-0.5" />
+                {renderTabLabel(tab.id, tab.label)}
+              </button>
+            );
+          })}
+        </div>
       </nav>
-
-      {/* Spacer for mobile nav */}
-      <div className="h-20 md:hidden"></div>
     </div>
   );
 };
 
-export { Layout };
+// Also provide default export in case you ever change import style
+export default Layout;

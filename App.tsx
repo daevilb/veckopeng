@@ -1,99 +1,73 @@
-import React, { useEffect, useState } from 'react';
-import { AppState, User, Task } from './types';
-import { fetchState, saveState } from './services/api';
+import React, { useState } from 'react';
+import { StateProvider, useAppState } from './components/StateProvider';
 import { Setup, Login } from './components/Auth';
 import { Layout } from './components/Layout';
 import { HomeDashboard, TaskManager, FamilyManager } from './components/Views';
 import { ThemeProvider } from './components/ThemeContext';
+import { User } from './types';
 
-function AppContent() {
-  const [state, setState] = useState<AppState | null>(null);
+function InnerApp() {
+  const { state, setPartial } = useAppState();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState('home');
-  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'home' | 'tasks' | 'family'>('home');
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    const data = await fetchState();
-    setState(data);
-    setLoading(false);
-  };
-
-  const handleUpdateState = async (newState: Partial<AppState>) => {
-    if (!state) return;
-    const updatedState = { ...state, ...newState };
-    setState(updatedState);
-    await saveState(updatedState);
-  };
-
-  const handleSetupComplete = (firstUser: User) => {
-    handleUpdateState({ users: [firstUser] });
-    setCurrentUser(firstUser);
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-dark-bg flex items-center justify-center">
-        <div className="flex flex-col items-center animate-pulse">
-          <div className="text-primary-600 dark:text-primary-400 font-bold text-2xl mb-2">Veckopeng</div>
-          <div className="text-gray-400 text-sm">Loading...</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!state) return <div>Error loading app state.</div>;
-
-  // 1. First Time Setup
+  // ---- FIRST RUN ----
   if (state.users.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-dark-bg flex items-center justify-center p-6">
-        <Setup isFirstRun={true} onComplete={handleSetupComplete} />
-      </div>
+      <Setup
+        isFirstRun={true}
+        onComplete={async (newUser) => {
+          await setPartial({ users: [newUser] });
+          setCurrentUser(newUser);
+        }}
+      />
     );
   }
 
-  // 2. Login Screen
+  // ---- LOGIN ----
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-dark-bg flex items-center justify-center p-6 transition-colors duration-300">
-        <Login users={state.users} onLogin={setCurrentUser} />
-      </div>
+      <Login
+        users={state.users}
+        onLogin={(u) => {
+          setCurrentUser(u);
+          setActiveTab('home');
+        }}
+      />
     );
   }
 
-  // 3. Main App
+  // ---- MAIN APP ----
   return (
-    <Layout 
-      currentUser={currentUser} 
-      activeTab={activeTab} 
-      onTabChange={setActiveTab}
+    <Layout
+      currentUser={currentUser}
+      activeTab={activeTab}
+      onTabChange={(t) => setActiveTab(t as any)}
       onLogout={() => setCurrentUser(null)}
     >
       {activeTab === 'home' && (
-        <HomeDashboard 
-          currentUser={currentUser} 
-          users={state.users} 
-          tasks={state.tasks}
-          onUpdateUsers={(users) => handleUpdateState({ users })}
-          onNavigate={setActiveTab}
-        />
-      )}
-      {activeTab === 'tasks' && (
-        <TaskManager 
+        <HomeDashboard
           currentUser={currentUser}
           users={state.users}
           tasks={state.tasks}
-          onStateChange={handleUpdateState}
+          onUpdateUsers={(users) => setPartial({ users })}
+          onNavigate={(tab) => setActiveTab(tab as any)}
         />
       )}
-      {activeTab === 'family' && currentUser.role === 'parent' && (
-        <FamilyManager 
+
+      {activeTab === 'tasks' && (
+        <TaskManager
+          currentUser={currentUser}
           users={state.users}
-          onUpdateUsers={(users) => handleUpdateState({ users })}
+          tasks={state.tasks}
+          onStateChange={(partial) => setPartial(partial)}
+        />
+      )}
+
+      {activeTab === 'family' && currentUser.role === 'parent' && (
+        <FamilyManager
+          users={state.users}
+          onUpdateUsers={(users) => setPartial({ users })}
         />
       )}
     </Layout>
@@ -103,7 +77,9 @@ function AppContent() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AppContent />
+      <StateProvider>
+        <InnerApp />
+      </StateProvider>
     </ThemeProvider>
   );
 }
