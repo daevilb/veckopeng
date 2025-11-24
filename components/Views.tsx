@@ -73,6 +73,9 @@ export const TaskManager: React.FC<TaskManagerProps> = ({
     .sort((a, b) => b.createdAt - a.createdAt);
 
   const hasAnyTasks = visibleTasks.length > 0;
+  const pendingCount = visibleTasks.filter((t) => t.status === 'pending').length;
+  const waitingCount = visibleTasks.filter((t) => t.status === 'waiting_for_approval').length;
+  const completedCount = visibleTasks.filter((t) => t.status === 'completed').length;
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -213,6 +216,9 @@ export const TaskManager: React.FC<TaskManagerProps> = ({
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
             {isParent
               ? 'Create, assign and approve tasks for your family.'
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+            {pendingCount} to do · {waitingCount} waiting · {completedCount} completed
+          </p>
               : 'See your tasks and send them for approval.'}
           </p>
         </div>
@@ -265,7 +271,7 @@ export const TaskManager: React.FC<TaskManagerProps> = ({
                     setNewTask((t) => ({ ...t, description: e.target.value }))
                   }
                 />
-              </div>
+                  min={1}
               <div className="md:col-span-4">
                 <Input
                   type="number"
@@ -328,7 +334,7 @@ export const TaskManager: React.FC<TaskManagerProps> = ({
                 </Button>
                 <Button
                   type="submit"
-                  disabled={!newTask.title || !newTask.assignedToId}
+                  disabled={!newTask.title || !newTask.assignedToId || newTask.reward < 1}
                 >
                   <CheckCircle size={18} />
                   Save Task
