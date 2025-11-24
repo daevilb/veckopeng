@@ -77,13 +77,21 @@ export const approveTaskApi = async (
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to approve task (status ${response.status})`);
+    let message = `Failed to approve task (status ${response.status})`;
+    try {
+      const data = await response.json();
+      if (data && typeof (data as any).error === 'string') {
+        message = (data as any).error;
+      }
+    } catch {
+      // ignore JSON parse errors
+    }
+    throw new Error(message);
   }
 
   const json = await response.json();
   return json as { task: Task; user: User };
 };
-
 /**
  * Update a task (for status changes etc.). Uses PATCH /api/tasks/:id.
  */
@@ -102,12 +110,20 @@ export const updateTaskApi = async (
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to update task (status ${response.status})`);
+    let message = `Failed to update task (status ${response.status})`;
+    try {
+      const data = await response.json();
+      if (data && typeof (data as any).error === 'string') {
+        message = (data as any).error;
+      }
+    } catch {
+      // ignore JSON parse errors
+    }
+    throw new Error(message);
   }
 
   return (await response.json()) as Task;
 };
-
 /**
  * Create a new task via POST /api/tasks
  */
@@ -123,8 +139,18 @@ export const createTaskApi = async (
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to create task (status ${response.status})`);
+    let message = `Failed to create task (status ${response.status})`;
+    try {
+      const data = await response.json();
+      if (data && typeof (data as any).error === 'string') {
+        message = (data as any).error;
+      }
+    } catch {
+      // ignore JSON parse errors
+    }
+    throw new Error(message);
   }
 
   return (await response.json()) as Task;
 };
+
