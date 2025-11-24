@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppState, User, Task } from '../types';
 import { Button } from './Button';
 import { Setup } from './Auth';
 import { Input } from './Input';
 import { Card } from './Card';
+import { useAppState } from './StateProvider';
 import { approveTaskApi, createTaskApi, updateTaskApi } from '../services/api';
 import { buildSwishPaymentUrl, buildVenmoPaymentUrl, buildCashAppPaymentUrl } from '../services/payments';
 import {
@@ -458,6 +459,21 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onNavigate,
 }) => {
   const isParent = currentUser.role === 'parent';
+  const { reload } = useAppState();
+
+  // Auto-refresh state for parents so new completed tasks show up in "Waiting for approval"
+  useEffect(() => {
+    if (!isParent) return;
+
+    const interval = setInterval(() => {
+      reload().catch((err) => {
+        console.error('Failed to auto-refresh state', err);
+      });
+    }, 10000); // every 10 seconds
+
+    return () => clearInterval(interval);
+  }, [isParent, reload]);
+
 
   if (!isParent) {
     const myTasks = tasks.filter((t) => t.assignedToId === currentUser.id);
