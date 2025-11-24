@@ -1,9 +1,21 @@
-import React, { useEffect, useState } from "react";
-import { Home, CheckSquare, Users, LogOut, Smartphone, Coffee } from "lucide-react";
-import { useAppState } from "./StateProvider";
+import React from 'react';
+import {
+  Home,
+  CheckSquare,
+  Users,
+  LogOut,
+  Smartphone,
+  Coffee,
+  Sun,
+  Moon,
+} from 'lucide-react';
+import { useAppState } from './StateProvider';
+import { useTheme } from './ThemeContext';
+
+type TabId = 'home' | 'tasks' | 'family';
 
 type TabConfig = {
-  id: string;
+  id: TabId;
   label: string;
   show: boolean;
   icon: React.ComponentType<{ className?: string }>;
@@ -12,12 +24,11 @@ type TabConfig = {
 interface LayoutProps {
   children: React.ReactNode;
   currentUser: any; // generic to avoid mismatch with types.ts
-  activeTab: string;
-  onTabChange: (tab: string) => void;
+  activeTab: TabId;
+  onTabChange: (tab: TabId) => void;
   onLogout: () => void;
 }
 
-// Named export (used by App.tsx: `import { Layout } from "./components/Layout"`)
 export const Layout: React.FC<LayoutProps> = ({
   children,
   currentUser,
@@ -25,136 +36,168 @@ export const Layout: React.FC<LayoutProps> = ({
   onTabChange,
   onLogout,
 }) => {
-  const [isScrolled, setIsScrolled] = useState(false);
   const { state } = useAppState();
+  const { theme, setTheme } = useTheme();
 
-  // Count tasks that are relevant for the current user:
-  // - Parent: tasks waiting_for_approval
-  // - Child: own tasks that are still pending
-  const pendingCount =
-    state?.tasks?.filter((t: any) => {
-      if (!currentUser) return false;
-      if (currentUser.role === "parent") {
-        return t.status === "waiting_for_approval";
-      } else {
-        return t.assignedToId === currentUser.id && t.status === "pending";
-      }
-    }).length ?? 0;
+  const isParent = currentUser?.role === 'parent';
 
-  // Tabs are stable and never disappear when clicking around.
-  // Only rule: "Family" is visible for parents, hidden for children.
   const tabs: TabConfig[] = [
     {
-      id: "home",
-      label: currentUser?.role === "parent" ? "Overview" : "My Week",
+      id: 'home',
+      label: isParent ? 'Overview' : 'My week',
       icon: Home,
       show: true,
     },
     {
-      id: "tasks",
-      label: "Tasks",
+      id: 'tasks',
+      label: 'Tasks',
       icon: CheckSquare,
       show: true,
     },
     {
-      id: "family",
-      label: "Family",
+      id: 'family',
+      label: 'Family',
       icon: Users,
-      show: currentUser?.role === "parent",
+      show: isParent,
     },
   ];
 
-  const visibleTabs = tabs.filter((t) => t.show);
+  const pendingApprovals = state.tasks.filter(
+    (t) => t.status === 'waiting_for_approval',
+  ).length;
 
-  useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 10);
-    };
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  const toggleTheme = () => {
+    setTheme(theme === 'dark' ? 'light' : 'dark');
+  };
 
-  const isParent = currentUser?.role === "parent";
-
-  const renderTabLabel = (tabId: string, label: string) => {
-    if (tabId !== "tasks" || pendingCount <= 0) {
-      return <span>{label}</span>;
+  const renderTabLabel = (tab: TabConfig) => {
+    if (tab.id === 'tasks' && isParent && pendingApprovals > 0) {
+      return (
+        <span className="inline-flex items-center gap-1">
+          <span>{tab.label}</span>
+          <span className="rounded-full bg-red-500/10 text-[10px] px-1.5 py-0.5 text-red-500 font-medium">
+            {pendingApprovals}
+          </span>
+        </span>
+      );
     }
 
-    return (
-      <span className="inline-flex items-center gap-1">
-        <span>{label}</span>
-        <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-emerald-500 text-[10px] font-bold text-slate-950 px-1">
-          {pendingCount}
-        </span>
-      </span>
-    );
+    return tab.label;
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-50">
       {/* Top bar */}
-      <header
-        className={`sticky top-0 z-30 border-b border-slate-800 bg-slate-950/90 backdrop-blur ${
-          isScrolled ? "shadow-lg shadow-slate-900/50" : ""
-        }`}
-      >
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-emerald-400 to-sky-500 flex items-center justify-center shadow-lg shadow-emerald-500/30">
-              <span className="text-xl">💰</span>
+      <div className="border-b border-slate-200 bg-white/80 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
+        <header className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+          {/* Left: app title + user */}
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center justify-center h-9 w-9 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 text-white shadow-sm">
+              <Smartphone className="h-5 w-5" />
             </div>
-            <div>
+            <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="font-semibold text-sm sm:text-base">
+                <h1 className="font-semibold text-sm sm:text-base truncate">
                   Veckopeng
                 </h1>
                 {isParent && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                  <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300 dark:bg-emerald-500/20">
                     <Smartphone className="h-3 w-3" />
                     Parent mode
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-slate-400">
-                Signed in as{" "}
-                <span className="font-medium text-slate-100">
-                  {currentUser?.name ?? "Unknown"}
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                Signed in as{' '}
+                <span className="font-medium text-slate-900 dark:text-slate-50">
+                  {currentUser?.name ?? 'Unknown'}
                 </span>
               </p>
             </div>
           </div>
 
+          {/* Right: theme toggle + support + logout */}
           <div className="flex items-center gap-2">
-            {/* Buy Me a Coffee – only for parents */}
-            {isParent && (
-              <a
-                href="https://www.buymeacoffee.com/daevilb"
-                target="_blank"
-                rel="noreferrer"
-                className="hidden sm:inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-200 hover:bg-amber-500/20 transition"
-              >
-                <Coffee className="h-3 w-3" />
-                Support dev
-              </a>
-            )}
+            {/* Theme toggle */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? (
+                <Sun className="h-3.5 w-3.5" />
+              ) : (
+                <Moon className="h-3.5 w-3.5" />
+              )}
+              <span className="hidden sm:inline">
+                {theme === 'dark' ? 'Light' : 'Dark'}
+              </span>
+            </button>
+
+            {/* Support link */}
+            <a
+              href="https://www.buymeacoffee.com/daevilb"
+              target="_blank"
+              rel="noreferrer"
+              className="hidden sm:inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
+            >
+              <Coffee className="h-3.5 w-3.5" />
+              Support
+            </a>
 
             {/* Logout */}
             <button
               type="button"
               onClick={onLogout}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-600/60 bg-red-900/40 hover:bg-red-800/70 transition"
-              aria-label="Sign out"
+              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
-              <LogOut className="h-4 w-4 text-red-200" />
+              <LogOut className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Logout</span>
             </button>
           </div>
-        </div>
+        </header>
 
-        {/* Desktop tab navigation */}
-        <nav className="hidden md:block border-t border-slate-800">
-          <div className="max-w-5xl mx-auto px-4 flex items-center gap-1">
-            {visibleTabs.map((tab) => {
+        {/* Desktop nav */}
+        <nav className="hidden md:block border-t border-slate-100 dark:border-slate-800">
+          <div className="max-w-5xl mx-auto px-4 flex gap-1 py-1.5">
+            {tabs
+              .filter((t) => t.show)
+              .map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => onTabChange(tab.id)}
+                    className={[
+                      'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                      isActive
+                        ? 'bg-primary-600 text-white shadow-sm dark:bg-primary-500'
+                        : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
+                    ].join(' ')}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {renderTabLabel(tab)}
+                  </button>
+                );
+              })}
+          </div>
+        </nav>
+      </div>
+
+      {/* Main content */}
+      <main className="flex-1 max-w-5xl mx-auto w-full px-4 py-6 pb-24 md:pb-10">
+        {children}
+      </main>
+
+      {/* Mobile tab bar */}
+      <nav className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95 md:hidden">
+        <div className="flex justify-around">
+          {tabs
+            .filter((t) => t.show)
+            .map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
@@ -162,59 +205,22 @@ export const Layout: React.FC<LayoutProps> = ({
                   key={tab.id}
                   type="button"
                   onClick={() => onTabChange(tab.id)}
-                  className={`relative flex items-center gap-2 px-3 py-2 text-xs font-medium transition ${
+                  className={[
+                    'flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[11px]',
                     isActive
-                      ? "text-emerald-300"
-                      : "text-slate-400 hover:text-slate-100"
-                  }`}
+                      ? 'text-primary-600 dark:text-primary-400'
+                      : 'text-slate-500 dark:text-slate-400',
+                  ].join(' ')}
                 >
-                  <Icon className="h-4 w-4" />
-                  {renderTabLabel(tab.id, tab.label)}
-                  {isActive && (
-                    <span className="absolute -bottom-px left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-400 via-sky-400 to-emerald-400" />
-                  )}
+                  <Icon className="h-5 w-5" />
+                  <span>{tab.label}</span>
                 </button>
               );
             })}
-            <div className="flex-1" />
-          </div>
-        </nav>
-      </header>
-
-      {/* Main content area */}
-      <main className="flex-1">
-        <div className="max-w-5xl mx-auto px-4 py-4 pb-20 md:pb-8">
-          {children}
-        </div>
-      </main>
-
-      {/* Mobile bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-800 bg-slate-950/95 backdrop-blur md:hidden">
-        <div className="max-w-5xl mx-auto flex items-stretch justify-around">
-          {visibleTabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => onTabChange(tab.id)}
-                className={`flex flex-col items-center justify-center flex-1 py-2 text-[11px] font-medium transition ${
-                  isActive
-                    ? "text-emerald-300"
-                    : "text-slate-400 hover:text-slate-100"
-                }`}
-              >
-                <Icon className="h-5 w-5 mb-0.5" />
-                {renderTabLabel(tab.id, tab.label)}
-              </button>
-            );
-          })}
         </div>
       </nav>
     </div>
   );
 };
 
-// Also provide default export in case you ever change import style
 export default Layout;
