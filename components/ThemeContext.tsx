@@ -6,7 +6,7 @@ import React, {
   ReactNode,
 } from 'react';
 
-type Theme = 'light' | 'dark';
+export type Theme = 'light' | 'dark';
 
 export interface ThemeContextType {
   theme: Theme;
@@ -15,60 +15,48 @@ export interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+const STORAGE_KEY = 'veckopeng-theme';
+
 interface ThemeProviderProps {
   children: ReactNode;
 }
 
-const THEME_STORAGE_KEY = 'veckopeng-theme';
-
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
-  const [theme, setThemeState] = useState<Theme>('dark');
+  const [theme, setThemeState] = useState<Theme>('light');
 
-  // Load initial theme from localStorage or prefers-color-scheme
+  const applyTheme = (next: Theme) => {
+    setThemeState(next);
+    try {
+      const root = document.documentElement;
+      if (next === 'dark') {
+        root.classList.add('dark');
+      } else {
+        root.classList.remove('dark');
+      }
+      window.localStorage.setItem(STORAGE_KEY, next);
+    } catch {
+      // ignore SSR / storage errors
+    }
+  };
+
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(THEME_STORAGE_KEY) as Theme | null;
+      const stored = window.localStorage.getItem(STORAGE_KEY) as Theme | null;
       if (stored === 'light' || stored === 'dark') {
-        setThemeState(stored);
-        applyThemeClass(stored);
+        applyTheme(stored);
         return;
       }
+      const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+      applyTheme(prefersDark ? 'dark' : 'light');
     } catch {
-      // ignore
+      applyTheme('light');
     }
-
-    const prefersDark =
-      window.matchMedia &&
-      window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-    const initial: Theme = prefersDark ? 'dark' : 'light';
-    setThemeState(initial);
-    applyThemeClass(initial);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const applyThemeClass = (t: Theme) => {
-    if (typeof document === 'undefined') return;
-    const root = document.documentElement;
-    if (t === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
-  };
-
-  const setTheme = (t: Theme) => {
-    setThemeState(t);
-    applyThemeClass(t);
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, t);
-    } catch {
-      // ignore
-    }
-  };
 
   const value: ThemeContextType = {
     theme,
-    setTheme,
+    setTheme: applyTheme,
   };
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
