@@ -57,7 +57,7 @@ export const TaskManager: React.FC<TaskManagerProps> = ({
     ? tasks
     : tasks.filter((t) => t.assignedToId === currentUser.id);
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTask.title || !newTask.assignedToId) return;
 
@@ -71,63 +71,91 @@ export const TaskManager: React.FC<TaskManagerProps> = ({
       createdAt: Date.now(),
     };
 
-    onStateChange({ tasks: [...tasks, task] });
+    try {
+      // Create task in backend first
+      const created = await createTaskApi({
+        ...task,
+        completedAt: null,
+      });
 
-    setIsCreating(false);
-    setNewTask({
-      title: '',
-      description: '',
-      reward: 20,
-      assignedToId: '',
-    });
+      // Then update local state (which will also be persisted via saveState)
+      onStateChange({ tasks: [...tasks, created] });
+
+      setIsCreating(false);
+      setNewTask({
+        title: '',
+        description: '',
+        reward: 20,
+        assignedToId: '',
+      });
+    } catch (err) {
+      console.error('Failed to create task:', err);
+      alert('Could not create task. Please try again.');
+    }
   };
 
   const handleDelete = (taskId: string) => {
     const updatedTasks = tasks.filter((t) => t.id !== taskId);
+    // For now we still rely on saveState to sync deletions.
     onStateChange({ tasks: updatedTasks });
   };
 
-  const handleStatusChange = (taskId: string, status: TaskStatus) => {
-    let updatedUsers = [...users];
+  const handleStatusChange = async (taskId: string, status: TaskStatus) => {
+    const existing = tasks.find((t) => t.id === taskId);
+    if (!existing) return;
 
-    const updatedTasks = tasks.map((t) => {
-      if (t.id !== taskId) return t;
+    // Parent approval: use dedicated backend endpoint so balance is correct
+    if (
+      status === 'completed' &&
+      currentUser.role === 'parent' &&
+      existing.status === 'waiting_for_approval'
+    ) {
+      try {
+        const { task: updatedTask, user: updatedUser } = await approveTaskApi(taskId);
 
-      // When parent approves a task (waiting_for_approval -> completed),
-      // add the reward to the child's balance.
-      if (status === 'completed' && t.status === 'waiting_for_approval') {
-        const idx = updatedUsers.findIndex((u) => u.id === t.assignedToId);
-        if (idx !== -1) {
-          const child = updatedUsers[idx];
-          updatedUsers[idx] = {
-            ...child,
-            balance: (child.balance ?? 0) + (t.reward ?? 0),
-          };
-        }
+        const updatedTasks = tasks.map((t) =>
+          t.id === taskId ? (updatedTask as Task) : t
+        );
+
+        const updatedUsers = users.map((u) =>
+          u.id === updatedUser.id ? (updatedUser as User) : u
+        );
+
+        onStateChange({
+          tasks: updatedTasks,
+          users: updatedUsers,
+        });
+      } catch (err) {
+        console.error('Failed to approve task:', err);
+        alert('Could not approve task. Please try again.');
+      }
+      return;
+    }
+
+    // Other status changes (child marking as done, parent sending back, etc.)
+    try {
+      const body: any = { status };
+
+      // Only adjust completedAt when we truly complete, or explicitly reset it
+      if (status === 'completed') {
+        body.completedAt = Math.floor(Date.now() / 1000);
+      } else if (status === 'pending') {
+        body.completedAt = null;
       }
 
-      return {
-        ...t,
-        status,
-        completedAt: status === 'completed' ? Date.now() : t.completedAt,
-      };
-    });
+      const updatedTask = await updateTaskApi(taskId, body);
 
-    onStateChange({ tasks: updatedTasks, users: updatedUsers });
-  };
+      const updatedTasks = tasks.map((t) =>
+        t.id === taskId ? (updatedTask as Task) : t
+      );
 
-  const getStatusLabel = (status: TaskStatus) => {
-    switch (status) {
-      case 'pending':
-        return 'To do';
-      case 'waiting_for_approval':
-        return 'Waiting for approval';
-      case 'completed':
-        return 'Completed';
-      default:
-        return status;
+      onStateChange({ tasks: updatedTasks });
+    } catch (err) {
+      console.error('Failed to update task status:', err);
+      alert('Could not update task. Please try again.');
     }
   };
+
 
   const getStatusBadgeClasses = (status: TaskStatus) => {
     switch (status) {
