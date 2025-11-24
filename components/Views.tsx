@@ -157,6 +157,20 @@ export const TaskManager: React.FC<TaskManagerProps> = ({
   };
 
 
+
+  const getStatusLabel = (status: TaskStatus) => {
+    switch (status) {
+      case 'pending':
+        return 'To do';
+      case 'waiting_for_approval':
+        return 'Waiting for approval';
+      case 'completed':
+        return 'Completed';
+      default:
+        return status;
+    }
+  };
+
   const getStatusBadgeClasses = (status: TaskStatus) => {
     switch (status) {
       case 'pending':
