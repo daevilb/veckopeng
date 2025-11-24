@@ -5,6 +5,7 @@ import { Setup } from './Auth';
 import { Input } from './Input';
 import { Card } from './Card';
 import { approveTaskApi, createTaskApi, updateTaskApi } from '../services/api';
+import { buildSwishPaymentUrl, buildVenmoPaymentUrl, buildCashAppPaymentUrl } from '../services/payments';
 import {
   CheckCircle,
   Clock,
@@ -568,30 +569,65 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     const child = users.find((u) => u.id === childId);
     if (!child || (child.balance ?? 0) <= 0) return;
 
+    const method = child.paymentMethod ?? 'swish';
+
     if (!child.phoneNumber) {
+      const label =
+        method === 'swish'
+          ? 'phone number'
+          : method === 'venmo'
+          ? 'Venmo username'
+          : 'Cash App $cashtag';
+
       alert(
-        `Please add a phone number for ${child.name} in the Family tab to use Swish.`,
+        `Please add a ${label} for ${child.name} in the Family tab before paying.`,
       );
       return;
     }
 
-    const paymentData = {
-      version: 1,
-      payee: { value: child.phoneNumber },
-      amount: { value: child.balance },
-      message: { value: 'Veckopeng' },
-    };
+    const amount = child.balance ?? 0;
 
-    const url = `swish://payment?data=${encodeURIComponent(
-      JSON.stringify(paymentData),
-    )}`;
+    let url: string;
+    let humanMethodLabel: string;
+
+    if (method === 'swish') {
+      if (!/^[0-9+ ]+$/.test(child.phoneNumber)) {
+        alert('Please enter a valid Swish phone number (digits and + only).');
+        return;
+      }
+
+      url = buildSwishPaymentUrl({
+        phoneNumber: child.phoneNumber,
+        amount,
+        message: 'Veckopeng',
+      });
+      humanMethodLabel = 'Swish';
+    } else if (method === 'venmo') {
+      url = buildVenmoPaymentUrl({
+        username: child.phoneNumber,
+        amount,
+        note: 'Veckopeng',
+      });
+      humanMethodLabel = 'Venmo';
+    } else if (method === 'cashapp') {
+      url = buildCashAppPaymentUrl({
+        cashtag: child.phoneNumber,
+        amount,
+        note: 'Veckopeng',
+      });
+      humanMethodLabel = 'Cash App';
+    } else {
+      alert('Unsupported payment method for this child.');
+      return;
+    }
 
     const confirmed = window.confirm(
-      `Open Swish to pay ${child.balance} kr to ${child.name}?`,
+      `Open ${humanMethodLabel} to pay ${amount} kr to ${child.name}?`,
     );
 
     if (confirmed) {
       window.location.href = url;
+
       setTimeout(() => {
         if (
           window.confirm(
@@ -764,46 +800,56 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                     </Button>
 
                     <div className="flex flex-wrap gap-2">
-                      {/* Swish – fully working */}
-                      <Button
-                        variant="primary"
-                        disabled={
-                          !(child.balance ?? 0) ||
-                          !child.phoneNumber ||
-                          !/^[0-9+ ]+$/.test(child.phoneNumber)
-                        }
-                        onClick={() => handlePayment(child.id)}
-                        title={
-                          (child.balance ?? 0) > 0 &&
-                          child.phoneNumber &&
-                          /^[0-9+ ]+$/.test(child.phoneNumber)
+                      {(() => {
+                        const method = child.paymentMethod ?? 'swish';
+                        const hasHandle = !!child.phoneNumber;
+                        const hasPositiveBalance = (child.balance ?? 0) > 0;
+
+                        let label = 'Pay';
+                        let title = '';
+                        let canPay = hasHandle && hasPositiveBalance;
+
+                        if (method === 'swish') {
+                          label = 'Swish';
+                          title = hasHandle
                             ? 'Open Swish with the full balance'
-                            : 'Requires a Swish phone number and a positive balance'
+                            : 'Requires a Swish phone number and a positive balance';
+                          // For Swish we also require a phone-like pattern
+                          if (
+                            !child.phoneNumber ||
+                            !/^[0-9+ ]+$/.test(child.phoneNumber)
+                          ) {
+                            canPay = false;
+                            title = 'Requires a valid Swish phone number and a positive balance';
+                          }
+                        } else if (method === 'venmo') {
+                          label = 'Venmo';
+                          title = hasHandle
+                            ? 'Open Venmo with the full balance'
+                            : 'Requires a Venmo username and a positive balance';
+                        } else if (method === 'cashapp') {
+                          label = 'Cash App';
+                          title = hasHandle
+                            ? 'Open Cash App with the full balance'
+                            : 'Requires a Cash App $cashtag and a positive balance';
                         }
-                      >
-                        <Smartphone className="w-4 h-4" />
-                        Swish
-                      </Button>
 
-                      {/* Venmo – placeholder, coming soon */}
-                      <Button
-                        variant="ghost"
-                        disabled
-                        title="Venmo support will be available in a future version"
-                      >
-                        <Smartphone className="w-4 h-4" />
-                        Venmo
-                      </Button>
+                        if (!title) {
+                          title = 'Set a payment method and handle on the Family tab.';
+                        }
 
-                      {/* Cash App – placeholder, coming soon */}
-                      <Button
-                        variant="ghost"
-                        disabled
-                        title="Cash App support will be available in a future version"
-                      >
-                        <Smartphone className="w-4 h-4" />
-                        Cash App
-                      </Button>
+                        return (
+                          <Button
+                            variant="primary"
+                            disabled={!canPay}
+                            onClick={() => handlePayment(child.id)}
+                            title={title}
+                          >
+                            <Smartphone className="w-4 h-4" />
+                            {label}
+                          </Button>
+                        );
+                      })()}
                     </div>
                   </div>
                 </Card>
