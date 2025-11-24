@@ -54,6 +54,8 @@ export const TaskManager: React.FC<TaskManagerProps> = ({
     'all' | 'pending' | 'waiting_for_approval' | 'completed'
   >('all');
 
+
+  const [hideCompleted, setHideCompleted] = useState(false);
   const isParent = currentUser.role === 'parent';
   const children = users.filter((u) => u.role === 'child');
 
@@ -64,6 +66,9 @@ export const TaskManager: React.FC<TaskManagerProps> = ({
   const filteredTasks = visibleTasks
     .filter((t) =>
       statusFilter === 'all' ? true : t.status === statusFilter
+    )
+    .filter((t) =>
+      hideCompleted && statusFilter === 'all' ? t.status !== 'completed' : true
     )
     .sort((a, b) => b.createdAt - a.createdAt);
 
@@ -335,43 +340,56 @@ export const TaskManager: React.FC<TaskManagerProps> = ({
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <div className="inline-flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant={statusFilter === 'all' ? 'secondary' : 'ghost'}
-            onClick={() => setStatusFilter('all')}
-          >
-            All
-          </Button>
-          <Button
-            size="sm"
-            variant={statusFilter === 'pending' ? 'secondary' : 'ghost'}
-            onClick={() => setStatusFilter('pending')}
-          >
-            To do
-          </Button>
-          <Button
-            size="sm"
-            variant={
-              statusFilter === 'waiting_for_approval' ? 'secondary' : 'ghost'
-            }
-            onClick={() => setStatusFilter('waiting_for_approval')}
-          >
-            Waiting for approval
-          </Button>
-          <Button
-            size="sm"
-            variant={statusFilter === 'completed' ? 'secondary' : 'ghost'}
-            onClick={() => setStatusFilter('completed')}
-          >
-            Completed
-          </Button>
+      <div className="space-y-2 mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="inline-flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant={statusFilter === 'all' ? 'secondary' : 'ghost'}
+              onClick={() => setStatusFilter('all')}
+            >
+              All
+            </Button>
+            <Button
+              size="sm"
+              variant={statusFilter === 'pending' ? 'secondary' : 'ghost'}
+              onClick={() => setStatusFilter('pending')}
+            >
+              To do
+            </Button>
+            <Button
+              size="sm"
+              variant={
+                statusFilter === 'waiting_for_approval' ? 'secondary' : 'ghost'
+              }
+              onClick={() => setStatusFilter('waiting_for_approval')}
+            >
+              Waiting for approval
+            </Button>
+            <Button
+              size="sm"
+              variant={statusFilter === 'completed' ? 'secondary' : 'ghost'}
+              onClick={() => setStatusFilter('completed')}
+            >
+              Completed
+            </Button>
+          </div>
+          {hasAnyTasks && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Showing {filteredTasks.length} of {visibleTasks.length} tasks
+            </p>
+          )}
         </div>
-        {hasAnyTasks && (
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Showing {filteredTasks.length} of {visibleTasks.length} tasks
-          </p>
+        {hasAnyTasks && statusFilter === 'all' && (
+          <label className="inline-flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            <input
+              type="checkbox"
+              checked={hideCompleted}
+              onChange={(e) => setHideCompleted(e.target.checked)}
+              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:bg-gray-900 dark:border-gray-700"
+            />
+            <span>Hide completed tasks when viewing all</span>
+          </label>
         )}
       </div>
 
