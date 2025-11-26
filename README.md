@@ -1,187 +1,166 @@
-![Veckopeng Banner](./docs/veckopeng-banner.png)
 
-# Veckopeng
+# Veckopeng — Homelab-Friendly Chore App with Built-In Payment Integration
 
-A modern, family-friendly app for managing chores, weekly allowance, and payment deep links — designed for self-hosting, privacy, and simplicity.
-
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support-yellow?style=for-the-badge&logo=buy-me-a-coffee)](https://buymeacoffee.com/andersbergz)
-
----
-
-## 🌟 Overview
-
-**Veckopeng** is a lightweight but powerful family app where parents can:
-- Create and assign tasks (chores)
-- Set reward amounts
-- Track each child’s weekly allowance
-- Trigger payment directly from their phone’s payment app
-
-Children complete tasks → parents approve them → the reward is added to the child’s balance.  
-At the end of the week, the parent taps **Pay**, and Veckopeng opens the payment app with the **phone number**, **amount**, and optional **message** prefilled.
-
-Veckopeng is built for **self-hosting** using Docker and keeps all your data in your own environment.
-
----
-
-## 📚 Table of Contents
-
-- Features
-- Payment Deep Links
-- Self-Hosted by Design
-- Getting Started
-- Configuration
-- Tech Stack
-- Contributing
-- Support
-- License
-- Roadmap
+A modern, self-hosted family chore & allowance app that automatically opens **Swish**, **Venmo**, or **Cash App** with the payment amount pre-filled.  
+Privacy-focused, easy to deploy, and designed for parents who want a simple way to manage chores and weekly allowance at home.
 
 ---
 
 ## ✨ Features
 
-### 👨‍👩‍👧 Family Management
-- Add parents and children
-- Assign phone numbers per user
-- Role-based experience:
-  - Children see a simplified “My tasks / My week” view
-  - Parents can manage tasks, approvals, and payments
+### 👨‍👩‍👧‍👦 Family Management
 
-### 📝 Task & Reward System
-- Create chores with title, description, and reward amount
-- Children mark tasks as completed
-- Tasks stay pending until approved or rejected
-- Approved tasks increase the child’s weekly balance
+- Add parents and children  
+- Assign chores  
+- Track weekly allowance  
+- Approve or deny completed tasks  
 
----
+### 💸 Built-In Payment Integration
 
-## 💸 Payment Deep Links
+When a parent pays a child:
 
-Veckopeng uses **payment deep links**, similar to Swish and other mobile payment apps.
+- The app automatically opens **Swish**, **Venmo**, or **Cash App**
+- Amount and phone number & username are pre-filled
+- One tap → payment sent  
+- No manual typing, no errors  
 
-This opens a payment app with:
-- The child’s phone number
-- The amount
-- An optional message
+> Desktop browsers show a disabled button since payment apps only work on mobile.
 
-### Current & Upcoming Providers
-- Swish-style deep links (supported)
-- More deep link providers planned (MobilePay, Vipps, etc.)
+### 🔐 Family Key Authentication
 
-Flow:
-**Tap once → Your payment app opens → Confirm → Done**
+- Backend protected using a **shared family key**
+- Frontend sends the key via `x-family-key`
+- Ideal for homelabs and LAN deployments  
 
----
+### 🏡 Homelab Ready
 
-## 🏡 Self-Hosted by Design
+- Fully dockerized
+- Uses persistent SQLite storage
+- Zero cloud dependencies
+- Works offline  
 
-- Runs as a Docker container  
-- Persistent storage  
-- No external cloud backend  
-- Ideal for homelab, NAS, or VPS setups  
+### 🎨 Clean UI
 
-A discreet **Buy Me a Coffee** link is visible only to parent profiles.
+- Light/Dark mode
+- Parent/Child dashboards
+- Mobile-first responsive layout
 
 ---
 
-## 🚀 Getting Started
+## 🐳 Installation (Docker Compose)
 
 ### 1. Clone the repository
-git clone https://github.com/daevilb/veckopeng.git  
+
+```bash
+git clone https://github.com/daevilb/veckopeng.git
 cd veckopeng
+```
 
-### 2. Start via Docker Compose
-docker compose up -d
+### 2. Copy environment template
 
-### 3. Open the app
-Open your browser and go to:  
-http://localhost:3000
+```bash
+cp .env.example .env
+```
 
-On first launch:
-1. Create the first parent account  
-2. Add your family members  
-3. Start creating tasks and rewards
+Then edit `.env`:
+
+```env
+FAMILY_API_KEY=my-secret-family-key
+VITE_API_BASE_URL=http://<your-server-ip>:8090
+```
+
+> Never expose Veckopeng publicly without a reverse proxy + proper authentication.
+
+### 3. Start the stack
+
+```bash
+docker compose up -d --build
+```
+
+### 4. Open the app
+
+Visit:
+
+```
+http://<your-server-ip>:4173
+```
+
+Enter the **Family Key** you set in `.env`.
 
 ---
 
 ## ⚙️ Configuration
 
-Environment variables:
+### Environment variables
 
-VP_PORT = 3000  
-VP_DATA_PATH = /data  
+| Variable | Description | Required |
+|---------|-------------|----------|
+| FAMILY_API_KEY | Secret key required by the backend | Yes |
+| VITE_API_BASE_URL | Backend URL reachable from the browser | Yes |
 
-### Example docker-compose.yml
-```yaml
-services:  
-  veckopeng:  
-    image: veckopeng:latest  
-    container_name: veckopeng  
-    ports:  
-      - "3000:3000"  
-    environment:  
-      - VP_PORT=3000  
-      - VP_DATA_PATH=/data  
-    volumes:  
-      - ./data:/data  
-    restart: unless-stopped
+### Default ports
 
+| Service | Internal | External |
+|---------|----------|----------|
+| Backend | 8080 | 8090 |
+| Frontend | 80 | 4173 |
+
+---
+
+## 📱 Payment Integrations
+
+### 🇸🇪 Swish
+- Mobile deep link  
+- Phone + amount pre-filled  
+- No external API needed  
+
+### 🇺🇸 Venmo (planned)
+- Venmo deep link  
+- Pre-filled recipient + amount  
+
+### 🇺🇸 Cash App (planned)
+- `$cashtag` + amount pre-filled  
+
+> Desktop → payment buttons disabled.
+
+---
+
+## ❓ Troubleshooting
+
+### Family Key screen does not appear
+- Ensure `FAMILY_API_KEY` is set  
+- Clear browser localStorage  
+- Restart containers:
+
+```bash
+docker compose down
+docker compose up -d --build
 ```
 
-## 🧱 Tech Stack
+### Frontend cannot reach backend
 
-- React + TypeScript  
-- Local/volume-based persistence  
-- Node runtime  
-- Docker containerization  
-- Payment deep links (Swish-style)  
-- Responsive UI (mobile + desktop)
+- Check that `VITE_API_BASE_URL` matches your server IP and port  
+- Run:
+
+```bash
+docker compose ps
+```
+
+### Blank frontend page
+
+```bash
+docker compose logs frontend
+```
 
 ---
 
 ## 🤝 Contributing
 
-PRs and suggestions are welcome!
-
-The goal is to make Veckopeng:
-**As smooth, fun, and useful as possible — while remaining simple to self-host.**
-
----
-
-## ☕ Support
-
-If you enjoy Veckopeng:
-- Use the Buy Me a Coffee link in the app  
-- Share the project  
-- Suggest features  
-
-Your support helps development continue.
+Contributions, ideas, and bug reports are welcome.
 
 ---
 
 ## 📜 License
 
-Veckopeng is licensed under **AGPL-3.0**.
-
-- LICENSE → Full AGPL text  
-- COMMERCIAL_LICENSE.md → For commercial use outside AGPL terms  
-
-Summary:
-✔ Free to use  
-✔ Free to modify  
-✔ Free to self-host  
-❗ Networked deployments must remain open-source  
-❗ Commercial closed-source use requires a commercial license  
-
----
-
-## 🛣️ Roadmap
-
-Upcoming improvements:
-- Light / Dark mode  
-- Modernized UI  
-- Improved onboarding  
-- Additional payment providers  
-- More tools for families  
-
-Have ideas? Open an issue!
+MIT License  
+Copyright © Anders Bergvall
