@@ -1,17 +1,15 @@
+# Steg 1: Använd en basimage (Node 20 eller liknande)
 FROM node:20-alpine
 
+# Sätt arbetsmappen
 WORKDIR /app
 
-# Install build tools required for better-sqlite3 (native addon)
-RUN apk add --no-cache python3 make g++
+# Kopiera paketfilerna och installera beroenden
+COPY package*.json ./
+RUN npm install
 
-# Install backend dependencies
-COPY package.json package-lock.json* ./
-RUN npm install --omit=dev
+# 🛑 DETTA ÄR NYCKELN: Kopiera alla källkodsfiler
+COPY . . 
 
-# Copy backend source
-COPY . .
-
-EXPOSE 8080
-
+# Steg 2: Starta applikationen
 CMD ["npm", "start"]

@@ -3,13 +3,13 @@ import cors from 'cors';
 import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import { requireFamilyKey } from '../familyAuth';
+import { requireFamilyKey } from './familyAuth.ts'; // Använder .ts då filen ligger i samma mapp
 
-app.get('/api/health', (_req, res) => res.json({ status: 'ok' })); // public
-app.use('/api', requireFamilyKey); // everything below requires x-family-key
-
+// -----------------------
+// APP INITIALIZATION MÅSTE KOMMA FÖRST!
+// -----------------------
 const app = express();
-const PORT = 8080;
+const PORT = Number(process.env.PORT) || 8080;
 const DATA_DIR = '/data';
 const JSON_STATE_FILE = path.join(DATA_DIR, 'state.json');
 const DB_FILE = path.join(DATA_DIR, 'veckopeng.db');
@@ -272,7 +272,20 @@ const getTaskById = (id: string): StoredTask | undefined => {
 };
 
 // -----------------------
-// Routes
+// Public / Health Routes
+// -----------------------
+
+// Simple health check (used by frontend to validate family key)
+app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+
+// -----------------------
+// Authentication Middleware
+// -----------------------
+// All /api routes below this require a valid family key
+app.use('/api', requireFamilyKey);
+
+// -----------------------
+// Authenticated Routes
 // -----------------------
 
 // Legacy-style state endpoints (kept for compatibility)
@@ -489,8 +502,8 @@ app.post('/api/tasks/:id/approve', (req, res) => {
     const tx = db.transaction(() => {
       // Update task status + completedAt if not set
       db.prepare(
-  'UPDATE tasks SET status = ?, completedAt = COALESCE(completedAt, ?) WHERE id = ? AND familyId = ?'
-).run('completed', now, existing.id, existing.familyId);
+          'UPDATE tasks SET status = ?, completedAt = COALESCE(completedAt, ?) WHERE id = ? AND familyId = ?'
+      ).run('completed', now, existing.id, existing.familyId);
 
       // Update user balance and totalEarned
       const newBalance = (user.balance ?? 0) + (existing.reward ?? 0);
