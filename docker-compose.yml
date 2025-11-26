@@ -9,6 +9,9 @@ services:
       - "8090:8080"
     volumes:
       - veckopeng_data:/data
+    environment:
+      FAMILY_API_KEY: "${FAMILY_API_KEY:-change-me-family-key}"
+      NODE_ENV: "production"
     restart: always
 
   frontend:
@@ -16,9 +19,13 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
     ports:
-      - "4173:80" # Expose on 4173 (Vite preview default) or 80. Using 4173 to avoid conflict if dev has local 8080/80 stuff.
+      - "4173:80"
     depends_on:
       - backend
+    environment:
+
+      VITE_API_BASE_URL: "${VITE_API_BASE_URL:-http://localhost:8090}"
+      NODE_ENV: "production"
     restart: always
 
 volumes:
