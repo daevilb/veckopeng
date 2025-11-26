@@ -26,12 +26,6 @@ When a parent pays a child:
 
 > Desktop browsers show a disabled button since payment apps only work on mobile.
 
-### 🔐 Family Key Authentication
-
-- Backend protected using a **shared family key**
-- Frontend sends the key via `x-family-key`
-- Ideal for homelabs and LAN deployments  
-
 ### 🏡 Homelab Ready
 
 - Fully dockerized
@@ -127,10 +121,10 @@ Enter the **Family Key** you set in `.env`.
 
 ## ❓ Troubleshooting
 
-### Family Key screen does not appear
-- Ensure `FAMILY_API_KEY` is set  
-- Clear browser localStorage  
-- Restart containers:
+==== NOT WORKING ====
+- Backend protected using a **shared family key**
+- Frontend sends the key via `x-family-key`
+- Ideal for homelabs and LAN deployments  
 
 ```bash
 docker compose down
