@@ -1,7 +1,8 @@
-// securedApi.ts
-// Wrapper around your existing API calls that automatically attaches the family key header.
+// src/services/securedApi.ts
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+// Vi tvingar typen till 'any' för att slippa bråk med TypeScript om 'env'
+const API_BASE_URL: string =
+  (import.meta as any).env?.VITE_API_BASE_URL || '';
 
 function getFamilyKey(): string | null {
   return localStorage.getItem('veckopeng.familyKey');
@@ -11,7 +12,9 @@ export async function securedFetch<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE_URL}${path}`;
+  // Om path redan börjar med http (t.ex. full url) så använd den, annars lägg på base
+  const url = path.startsWith('http') ? path : `${API_BASE_URL}${path}`;
+  
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
@@ -38,10 +41,3 @@ export async function securedFetch<T>(
 
   return response.json() as Promise<T>;
 }
-
-/**
- * Suggested usage:
- *
- * - Replace your existing raw fetch(...) calls used for backend APIs with securedFetch(...)
- *   or wrap your existing api helpers around securedFetch so the header is always present.
- */
