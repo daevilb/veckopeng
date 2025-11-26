@@ -537,25 +537,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const [paymentModal, setPaymentModal] = useState<PaymentModalState | null>(null);
   const [paymentStep, setPaymentStep] = useState<'confirm' | 'verify'>('confirm');
 
-  useEffect(() => {
-    if (!isParent) return;
-    const doRefresh = () => {
-      setSyncState((prev) => (prev === 'success' ? 'success' : 'syncing'));
-      reload()
-        .then(() => {
-          setSyncState('success');
-          setTimeout(() => setSyncState('idle'), 2500);
-        })
-        .catch((err) => {
-          console.error('Failed to auto-refresh state', err);
-          setSyncState('idle');
-        });
-    };
-    doRefresh();
-    const interval = setInterval(doRefresh, 15000);
-    return () => clearInterval(interval);
-  }, [isParent, reload]); 
-
   // Initiera betalning (öppna modal)
   const initiatePayment = (childId: string) => {
     const child = users.find((u) => u.id === childId);
