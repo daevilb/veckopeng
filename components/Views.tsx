@@ -16,6 +16,7 @@ import {
   buildSwishPaymentUrl,
   buildVenmoPaymentUrl,
   buildCashAppPaymentUrl,
+  buildPaypalPaymentUrl,
 } from '../services/payments';
 import {
   CheckCircle,
@@ -1174,6 +1175,7 @@ const ChildEditRow: React.FC<{
                 <option value="swish">Swish</option>
                 <option value="venmo">Venmo</option>
                 <option value="cashapp">Cash App</option>
+                <option value="paypal">PayPal.me</option>
               </select>
             </div>
           </div>
@@ -1532,19 +1534,27 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     }
 
     const amount = child.balance ?? 0;
-    let url = '';
-    let label = 'Swish';
+let url = '';
+let label: string = 'Swish'; // CHANGED (explicit type, but behaviour same)
 
-    if (method === 'swish') {
-      url = buildSwishPaymentUrl({ phoneNumber: child.phoneNumber, amount });
-      label = 'Swish';
-    } else if (method === 'venmo') {
-      url = buildVenmoPaymentUrl({ username: child.phoneNumber, amount });
-      label = 'Venmo';
-    } else if (method === 'cashapp') {
-      url = buildCashAppPaymentUrl({ cashtag: child.phoneNumber, amount });
-      label = 'Cash App';
-    }
+if (method === 'swish') {
+  url = buildSwishPaymentUrl({ phoneNumber: child.phoneNumber, amount });
+  label = 'Swish';
+} else if (method === 'venmo') {
+  url = buildVenmoPaymentUrl({ username: child.phoneNumber, amount });
+  label = 'Venmo';
+} else if (method === 'cashapp') {
+  url = buildCashAppPaymentUrl({ cashtag: child.phoneNumber, amount });
+  label = 'Cash App';
+} else if (method === 'paypal') { // CHANGED
+  const currency = (child.currency || 'SEK').toString(); // CHANGED
+  url = buildPaypalPaymentUrl({ // CHANGED
+    handle: child.phoneNumber, // still using the existing identifier field
+    amount,
+    currency,                  // pass child's currency (SEK, USD, etc.)
+  });
+  label = 'PayPal'; // CHANGED
+}
 
     setPaymentModal({
       childId: child.id,
