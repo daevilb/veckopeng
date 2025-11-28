@@ -32,6 +32,7 @@ export interface User {
   currency?: Currency;        // e.g. 'SEK' (default)
   balance: number;            // Current unpaid allowance
   totalEarned: number;        // Lifetime cumulative earnings
+  weeklyAllowance?: number;   // Expected weekly earnings goal
 }
 
 export interface Task {

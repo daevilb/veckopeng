@@ -1,12 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { AppState, User, Task, PaymentMethod } from '../types';
+import { AppState, User, Task, PaymentMethod, Role, Currency } from '../types';
 import { Button } from './Button';
 import { Setup } from './Auth';
 import { Input } from './Input';
 import { Card } from './Card';
 import { useAppState } from './StateProvider';
-import { approveTaskApi, createTaskApi, updateTaskApi } from '../services/api';
-import { buildSwishPaymentUrl, buildVenmoPaymentUrl, buildCashAppPaymentUrl } from '../services/payments';
+import {
+  approveTaskApi,
+  createTaskApi,
+  updateTaskApi,
+  createUserApi,
+  updateUserApi,
+} from '../services/api';
+import {
+  buildSwishPaymentUrl,
+  buildVenmoPaymentUrl,
+  buildCashAppPaymentUrl,
+  buildPaypalPaymentUrl,
+} from '../services/payments';
 import {
   CheckCircle,
   Clock,
@@ -14,181 +25,468 @@ import {
   Plus,
   X,
   AlertCircle,
-  Wallet,
-  CheckSquare,
+  ArrowRight,
+  ArrowLeft,
+  RefreshCw,
   Smartphone,
-  User as UserIcon,
-  Trophy,
+  Users,
   Calendar,
-  History,
-  ExternalLink,
-  Check,
+  PiggyBank,
+  ShieldCheck,
+  ChevronDown,
+  ChevronUp,
+  CheckSquare,
+  Trophy,
   Pencil,
   Trash2,
-  Lock,
-  AlertTriangle
+  UserPlus,
+  Coins,
 } from 'lucide-react';
-import { generateId } from '../utils/id';
 
-// ================ Helpers ================
+type TaskStatus = Task['status'];
 
-const isSameWeek = (date1: Date, date2: Date) => {
-  const d1 = new Date(date1);
-  const d2 = new Date(date2); // <-- FIXAT: Använder parametern date2
-  d1.setHours(0, 0, 0, 0);
-  d2.setHours(0, 0, 0, 0);
-  const day1 = d1.getDay() || 7;
-  const day2 = d2.getDay() || 7;
-  d1.setDate(d1.getDate() + 4 - day1);
-  d2.setDate(d2.getDate() + 4 - day2);
-  const year1 = d1.getFullYear();
-  const week1 = Math.ceil((((d1.getTime() - new Date(year1, 0, 1).getTime()) / 86400000) + 1) / 7);
-  const year2 = d2.getFullYear();
-  const week2 = Math.ceil((((d2.getTime() - new Date(year2, 0, 1).getTime()) / 86400000) + 1) / 7);
-  return year1 === year2 && week1 === week2;
-};
-
-// ================ Task Card Component (Internal) ================
-// Komponenten ligger här för att undvika filberoende.
-
-interface TaskCardProps {
-  task: Task;
-  assignedChild?: User;
-  currentUser: User;
-  onStatusChange: (taskId: string, status: Task['status']) => void;
-  onDelete: (taskId: string) => void;
+// Helpers
+function formatDate(d: Date) {
+  return d.toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
 }
 
-const getStatusLabel = (status: Task['status']) => {
-  switch (status) {
-    case 'pending':
-      return 'To do';
-    case 'waiting_for_approval':
-      return 'Waiting for approval';
-    case 'completed':
-      return 'Completed';
-    default:
-      return status;
-  }
-};
+function formatTime(d: Date) {
+  return d.toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
-const getStatusBadgeClasses = (status: Task['status']) => {
+function getWeekRange(date: Date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diffToMonday = (day + 6) % 7;
+
+  d.setDate(d.getDate() - diffToMonday);
+  const monday = new Date(d);
+  const sunday = new Date(d);
+  sunday.setDate(monday.getDate() + 6);
+
+  return `${monday.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  })} – ${sunday.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  })}`;
+}
+
+function getToday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function getWeekStart(date: Date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diffToMonday = (day + 6) % 7;
+  d.setDate(d.getDate() - diffToMonday);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function getPreviousWeek(date: Date) {
+  const d = getWeekStart(date);
+  d.setDate(d.getDate() - 7);
+  return d;
+}
+
+function getNextWeek(date: Date) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + 7);
+  return d;
+}
+
+// Helper to check if two dates are in the same ISO week
+function isSameWeek(d1: Date, d2: Date = new Date()): boolean {
+  const date1 = new Date(d1.getTime());
+  const date2 = new Date(d2.getTime());
+
+  date1.setHours(0, 0, 0, 0);
+  date2.setHours(0, 0, 0, 0);
+
+  const day1 = date1.getDay() || 7;
+  const day2 = date2.getDay() || 7;
+
+  date1.setDate(date1.getDate() + 4 - day1);
+  date2.setDate(date2.getDate() + 4 - day2);
+
+  const year1 = date1.getFullYear();
+  const week1 = Math.ceil(
+    ((date1.getTime() - new Date(year1, 0, 1).getTime()) / 86400000 + 1) / 7,
+  );
+  const year2 = date2.getFullYear();
+  const week2 = Math.ceil(
+    ((date2.getTime() - new Date(year2, 0, 1).getTime()) / 86400000 + 1) / 7,
+  );
+
+  return year1 === year2 && week1 === week2;
+}
+
+const getStatusBadgeClasses = (status: TaskStatus) => {
   switch (status) {
     case 'pending':
-      return 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300';
+      return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
     case 'waiting_for_approval':
-      return 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200';
     case 'completed':
-      return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
+      return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200';
     default:
       return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
   }
 };
 
-export const TaskCard: React.FC<TaskCardProps> = ({
-  task,
-  assignedChild,
-  currentUser,
-  onStatusChange,
-  onDelete,
-}) => {
-  const isParent = currentUser.role === 'parent';
-  const isAssignedToMe = task.assignedToId === currentUser.id;
+// ============================================
+// Setup Wrapper (used by App.tsx)
+// ============================================
 
-  const canMarkAsDone = isAssignedToMe && task.status === 'pending';
-  const canApprove = isParent && task.status === 'waiting_for_approval';
-  const canSendBack = isParent && task.status === 'waiting_for_approval';
-  const canDelete = isParent;
-  
-  const isDone = task.status === 'completed'; 
+export const SetupWrapper: React.FC = () => {
+  const { state, reload } = useAppState();
+  const hasUsers = state.users && state.users.length > 0;
 
-  const handleMarkDone = () => onStatusChange(task.id, 'waiting_for_approval');
-  const handleApprove = () => onStatusChange(task.id, 'completed');
-  const handleSendBack = () => onStatusChange(task.id, 'pending');
+  const handleComplete = async () => {
+    try {
+      await reload();
+    } catch (err) {
+      console.error('Failed to reload after setup', err);
+    }
+  };
+
+  if (hasUsers) {
+    // Once at least one user exists, don't show setup anymore
+    return null;
+  }
 
   return (
-    <Card
-      className={`flex flex-col md:flex-row md:items-center md:justify-between gap-4 ${
-        isDone
-          ? 'opacity-80 hover:opacity-100 transition-opacity'
-          : ''
-      }`}
-    >
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <span
-            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClasses(
-              task.status,
-            )}`}
-          >
-            <CheckSquare className="w-3 h-3 mr-1" />
-            {getStatusLabel(task.status)}
-          </span>
-          {assignedChild && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
-              Assigned to {assignedChild.name}
-            </span>
-          )}
-        </div>
-        <h3 className="font-semibold text-gray-900 dark:text-white">
-          {task.title}
-        </h3>
-        {task.description && (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {task.description}
-          </p>
-        )}
-        <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-          <span className="inline-flex items-center gap-1">
-            <Clock className="w-4 h-4" />
-            {new Date(task.createdAt).toLocaleDateString()}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <DollarSign className="w-4 h-4" />
-            {task.reward} kr
-          </span>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 justify-start md:justify-end">
-        {canMarkAsDone && (
-          <Button variant="primary" onClick={handleMarkDone}>
-            <CheckCircle className="w-4 h-4" />
-            Mark as done
-          </Button>
-        )}
-        {canApprove && (
-          <Button variant="primary" onClick={handleApprove}>
-            <CheckCircle className="w-4 h-4" />
-            Approve & add to balance
-          </Button>
-        )}
-        {canSendBack && (
-          <Button variant="secondary" onClick={handleSendBack}>
-            <X className="w-4 h-4" />
-            Send back
-          </Button>
-        )}
-        {canDelete && (
-          <Button variant="ghost" onClick={() => onDelete(task.id)} aria-label="Delete task">
-            <Trash2 className="w-4 h-4" />
-          </Button>
-        )}
-      </div>
-    </Card>
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
+      <Setup onComplete={handleComplete} isFirstRun={!hasUsers} />
+    </div>
   );
 };
 
-// ================ Task Manager ================
+// ============================================
+// Task List & Actions
+// ============================================
+
+interface TaskListProps {
+  tasks: Task[];
+  users: User[];
+  currentUser: User;
+  onUpdateTask: (task: Task) => void;
+  onDeleteTask?: (taskId: string) => void;
+  onStatusChange: (taskId: string, status: TaskStatus) => void;
+}
+
+const TaskList: React.FC<TaskListProps> = ({
+  tasks,
+  users,
+  currentUser,
+  onUpdateTask,
+  onDeleteTask,
+  onStatusChange,
+}) => {
+  const isParent = currentUser.role === 'parent';
+
+  const getAssigneeName = (userId: string) =>
+    users.find((u) => u.id === userId)?.name || 'Unknown';
+
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
+  const [editingDescription, setEditingDescription] = useState('');
+  const [editingReward, setEditingReward] = useState(0);
+  const [editingAssigneeId, setEditingAssigneeId] = useState('');
+
+  const startEdit = (task: Task) => {
+    setEditingTaskId(task.id);
+    setEditingTitle(task.title);
+    setEditingDescription(task.description || '');
+    setEditingReward(task.reward);
+    setEditingAssigneeId(task.assignedToId);
+  };
+
+  const cancelEdit = () => {
+    setEditingTaskId(null);
+    setEditingTitle('');
+    setEditingDescription('');
+    setEditingReward(0);
+    setEditingAssigneeId('');
+  };
+
+  const saveEdit = async () => {
+    if (!editingTaskId) return;
+
+    const updatedTask: Task = {
+      ...tasks.find((t) => t.id === editingTaskId)!,
+      title: editingTitle.trim(),
+      description: editingDescription.trim(),
+      reward: editingReward,
+      assignedToId: editingAssigneeId,
+    };
+
+    try {
+      const saved = await updateTaskApi(updatedTask.id, updatedTask);
+      onUpdateTask(saved);
+      cancelEdit();
+    } catch (err) {
+      console.error('Failed to update task', err);
+      alert('Could not update task. Please try again.');
+    }
+  };
+
+  const renderActions = (task: Task) => {
+    const isOwnTask = task.assignedToId === currentUser.id;
+
+    if (currentUser.role === 'child') {
+      if (task.status === 'pending' && isOwnTask) {
+        return (
+          <button
+            onClick={() => onStatusChange(task.id, 'waiting_for_approval')}
+            className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700 hover:bg-primary-100 dark:bg-primary-900/30 dark:text-primary-300"
+          >
+            <CheckSquare className="w-3.5 h-3.5" />
+            Mark done
+          </button>
+        );
+      }
+
+      if (task.status === 'waiting_for_approval') {
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+            <Clock className="w-3.5 h-3.5" />
+            Waiting for approval
+          </span>
+        );
+      }
+
+      if (task.status === 'completed') {
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+            <CheckCircle className="w-3.5 h-3.5" />
+            Completed
+          </span>
+        );
+      }
+
+      return null;
+    }
+
+    // Parent actions
+    if (task.status === 'waiting_for_approval') {
+      return (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => onStatusChange(task.id, 'completed')}
+            className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300"
+          >
+            <CheckCircle className="w-3.5 h-3.5" />
+            Approve
+          </button>
+          <button
+            onClick={() => onStatusChange(task.id, 'pending')}
+            className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:bg-rose-900/30 dark:text-rose-300"
+          >
+            <X className="w-3.5 h-3.5" />
+            Deny
+          </button>
+        </div>
+      );
+    }
+
+    if (task.status === 'completed') {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+          <CheckCircle className="w-3.5 h-3.5" />
+          Completed
+        </span>
+      );
+    }
+
+    return null;
+  };
+
+  if (!tasks.length) {
+    return (
+      <div className="rounded-2xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+        No tasks yet. Create one to get started.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {tasks.map((task) => {
+        const assigneeName = getAssigneeName(task.assignedToId);
+        const isEditing = editingTaskId === task.id;
+
+        return (
+          <Card key={task.id} className="p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div className="flex-1 space-y-1">
+                {isEditing ? (
+                  <>
+                    <Input
+                      label="Title"
+                      value={editingTitle}
+                      onChange={(e) => setEditingTitle(e.target.value)}
+                    />
+                    <Input
+                      label="Description"
+                      value={editingDescription}
+                      onChange={(e) => setEditingDescription(e.target.value)}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                        {assigneeName}
+                      </span>
+                    </div>
+                    <p className="font-medium text-gray-900 dark:text-white">
+                      {task.title}
+                    </p>
+                    {task.description && (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {task.description}
+                      </p>
+                    )}
+                  </>
+                )}
+
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px]\tfont-medium ${getStatusBadgeClasses(
+                      task.status,
+                    )}`}
+                  >
+                    {task.status === 'pending' && (
+                      <>
+                        <Clock className="mr-1 h-3 w-3" />
+                        Pending
+                      </>
+                    )}
+                    {task.status === 'waiting_for_approval' && (
+                      <>
+                        <AlertCircle className="mr-1 h-3 w-3" />
+                        Waiting for approval
+                      </>
+                    )}
+                    {task.status === 'completed' && (
+                      <>
+                        <CheckCircle className="mr-1 h-3 w-3" />
+                        Completed
+                      </>
+                    )}
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
+                    <DollarSign className="h-3 w-3" />
+                    {task.reward} kr
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span>Created</span>
+                    <span className="font-medium text-gray-700 dark:text-gray-200">
+                      {formatDate(new Date(task.createdAt * 1000))}
+                    </span>
+                    <span className="hidden text-gray-400 md:inline">·</span>
+                    <span className="hidden md:inline">
+                      {formatTime(new Date(task.createdAt * 1000))}
+                    </span>
+                  </span>
+                  {task.completedAt && (
+                    <span className="inline-flex items-center gap-1">
+                      <span>Completed</span>
+                      <span className="font-medium text-gray-700 dark:text-gray-200">
+                        {formatDate(new Date(task.completedAt * 1000))}
+                      </span>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-col items-end gap-2 md:mt-0 md:min-w-[220px]">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                    {task.reward} kr
+                  </span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    reward
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {isParent && (
+                    <>
+                      {isEditing ? (
+                        <>
+                          <button
+                            onClick={saveEdit}
+                            className="inline-flex items-center gap-1 rounded-full bg-primary-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-primary-700"
+                          >
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            Save
+                          </button>
+                          <button
+                            onClick={cancelEdit}
+                            className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => startEdit(task)}
+                            className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                            Edit
+                          </button>
+                          {onDeleteTask && (
+                            <button
+                              onClick={() => onDeleteTask(task.id)}
+                              className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:bg-rose-900/30 dark:text-rose-300"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Delete
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </>
+                  )}
+
+                  {renderActions(task)}
+                </div>
+              </div>
+            </div>
+          </Card>
+        );
+      })}
+    </div>
+  );
+};
+
+// ============================================
+// Task Manager (Parent + Child views)
+// ============================================
 
 interface TaskManagerProps {
   currentUser: User;
   users: User[];
   tasks: Task[];
-  onStateChange: (changes: Partial<AppState>) => void;
+  onStateChange: (partial: Partial<AppState>) => void;
 }
-
-type TaskStatus = Task['status'];
 
 export const TaskManager: React.FC<TaskManagerProps> = ({
   currentUser,
@@ -196,316 +494,989 @@ export const TaskManager: React.FC<TaskManagerProps> = ({
   tasks,
   onStateChange,
 }) => {
-  const [isCreating, setIsCreating] = useState(false);
-  const [childView, setChildView] = useState<'todo' | 'history'>('todo');
-
-  const [newTask, setNewTask] = useState<{
-    title: string;
-    description: string;
-    reward: number;
-    assignedToId: string;
-  }>({
+  const [selectedChildId, setSelectedChildId] = useState<string>('');
+  const [newTask, setNewTask] = useState({
     title: '',
     description: '',
-    reward: 20,
+    reward: 10,
     assignedToId: '',
   });
+  const [filterStatus, setFilterStatus] = useState<TaskStatus | 'all'>('all');
+  const [childView, setChildView] = useState<'todo' | 'history'>('todo');
 
   const isParent = currentUser.role === 'parent';
-  const children = users.filter((u) => u.role === 'child');
 
-  const myTasks = isParent 
-    ? tasks 
-    : tasks.filter((t) => t.assignedToId === currentUser.id);
+  const familyChildren = users.filter((u) => u.role === 'child');
+  useEffect(() => {
+    if (isParent && !selectedChildId && familyChildren.length > 0) {
+      setSelectedChildId(familyChildren[0].id);
+    }
+  }, [isParent, selectedChildId, familyChildren]);
 
-  const activeTasks = myTasks.filter(t => t.status === 'pending' || t.status === 'waiting_for_approval');
-  
-  const completedStatuses: TaskStatus[] = ['completed']; 
-  const historyTasks = myTasks.filter(t => completedStatuses.includes(t.status));
+  const filteredTasks = tasks.filter((task) => {
+    if (isParent) {
+      if (selectedChildId && task.assignedToId !== selectedChildId) {
+        return false;
+      }
+    } else {
+      if (task.assignedToId !== currentUser.id) return false;
+    }
 
-  const totalEarnedAllTime = historyTasks.reduce((sum, t) => sum + t.reward, 0);
-  
-  const thisWeekTasks = historyTasks.filter(t => {
-    const dateToCheck = t.completedAt ? new Date(t.completedAt * 1000) : new Date(t.createdAt);
+    if (filterStatus !== 'all' && task.status !== filterStatus) {
+      return false;
+    }
+
+    return true;
+  });
+
+  const activeTasks = filteredTasks.filter(
+    (t) => t.status === 'pending' || t.status === 'waiting_for_approval',
+  );
+  const historyTasks = filteredTasks.filter((t) => t.status === 'completed');
+
+  const thisWeekTasks = historyTasks.filter((t) => {
+    const dateToCheck = t.completedAt
+      ? new Date(t.completedAt * 1000)
+      : new Date(t.createdAt);
     return isSameWeek(new Date(), dateToCheck);
   });
+
   const earnedThisWeek = thisWeekTasks.reduce((sum, t) => sum + t.reward, 0);
 
-  const visibleTasks = isParent ? tasks : (childView === 'todo' ? activeTasks : historyTasks);
+  const visibleTasks = isParent
+    ? tasks
+    : childView === 'todo'
+    ? activeTasks
+    : historyTasks;
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTask.title || !newTask.assignedToId) return;
 
-    const task: Task = {
-      id: generateId(),
+    const taskPayload = {
       title: newTask.title.trim(),
       description: newTask.description.trim(),
-      reward: Number(newTask.reward) || 0,
+      reward: Number(newTask.reward),
       assignedToId: newTask.assignedToId,
-      status: 'pending' as TaskStatus,
-      createdAt: Date.now(),
     };
 
     try {
-      const created = await createTaskApi({
-        ...task,
-        completedAt: null,
+      const savedTask = await createTaskApi(taskPayload);
+      onStateChange({ tasks: [...tasks, savedTask] });
+      setNewTask({
+        title: '',
+        description: '',
+        reward: 10,
+        assignedToId: isParent ? newTask.assignedToId : currentUser.id,
       });
-      onStateChange({ tasks: [...tasks, created] });
-      setIsCreating(false);
-      setNewTask({ title: '', description: '', reward: 20, assignedToId: '' });
-    } catch (err: any) {
-      console.error('Failed to create task:', err);
+    } catch (err) {
+      console.error('Failed to create task', err);
       alert('Could not create task. Please try again.');
     }
   };
 
-  const handleDelete = (taskId: string) => {
-    const updatedTasks = tasks.filter((t) => t.id !== taskId);
-    onStateChange({ tasks: updatedTasks });
+  const handleStatusChange = async (taskId: string, status: TaskStatus) => {
+    try {
+      if (isParent && status === 'completed') {
+        // Parent approving a task: use approveTaskApi so balance/totalEarned are updated
+        const {
+          task: updatedTask,
+          user: updatedUser,
+        } = await approveTaskApi(taskId, true);
+
+        const newTasks = tasks.map((t) => (t.id === taskId ? updatedTask : t));
+        const newUsers = users.map((u) => (u.id === updatedUser.id ? updatedUser : u));
+
+        onStateChange({ tasks: newTasks, users: newUsers });
+      } else {
+        // Child marking done (waiting_for_approval) or parent resetting/denying: simple status update
+        const patch: Partial<Pick<Task, 'status' | 'title' | 'description' | 'reward'>> & {
+          completedAt?: number | null;
+        } = { status };
+
+        if (status === 'completed') {
+          patch.completedAt = Math.floor(Date.now() / 1000);
+        } else if (status === 'pending') {
+          patch.completedAt = null;
+        }
+
+        const updatedTask = await updateTaskApi(taskId, patch);
+        const newTasks = tasks.map((t) => (t.id === taskId ? updatedTask : t));
+        onStateChange({ tasks: newTasks });
+      }
+    } catch (err) {
+      console.error('Failed to update task status', err);
+      alert('Could not update task. Please try again.');
+    }
   };
 
-  const handleStatusChange = async (taskId: string, status: TaskStatus) => {
-    const existing = tasks.find((t) => t.id === taskId);
-    if (!existing) return;
+  const handleUpdateTask = (updatedTask: Task) => {
+    const newTasks = tasks.map((t) => (t.id === updatedTask.id ? updatedTask : t));
+    onStateChange({ tasks: newTasks });
+  };
 
-    if (
-      status === 'completed' &&
-      currentUser.role === 'parent' &&
-      existing.status === 'waiting_for_approval'
-    ) {
-      try {
-        const { task: updatedTask, user: updatedUser } = await approveTaskApi(taskId); 
-        
-        const updatedTasks = tasks.map((t) =>
-          t.id === taskId ? (updatedTask as Task) : t
-        );
-        
-        const mergedUsers = users.map((u) => {
-            return u.id === updatedUser.id ? (updatedUser as User) : u;
-        });
+  const handleDeleteTask = (taskId: string) => {
+    const newTasks = tasks.filter((t) => t.id !== taskId);
+    onStateChange({ tasks: newTasks });
+  };
 
-        onStateChange({ tasks: updatedTasks, users: mergedUsers });
-      } catch (err: any) {
-        console.error('Failed to approve task:', err);
-        alert('Could not approve task. Please try again.');
-      }
+  if (isParent) {
+    return (
+      <div className="space-y-6">
+        {/* Filters */}
+        <Card className="p-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                Filter tasks
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Choose child and status to focus your view.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <select
+                className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                value={selectedChildId}
+                onChange={(e) => setSelectedChildId(e.target.value)}
+              >
+                <option value="">All children</option>
+                {familyChildren.map((child) => (
+                  <option key={child.id} value={child.id}>
+                    {child.name}
+                  </option>
+                ))}
+              </select>
+
+              <div className="inline-flex rounded-full bg-gray-100 p-0.5 text-xs dark:bg-gray-800">
+                {(['all', 'pending', 'waiting_for_approval', 'completed'] as const).map(
+                  (status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() => setFilterStatus(status)}
+                      className={`rounded-full px-3 py-1 font-medium transition ${
+                        filterStatus === status
+                          ? 'bg-white text-gray-900 shadow-sm dark:bg-primary-600 dark:text-white'
+                          : 'text-gray-600 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      {status === 'all'
+                        ? 'All'
+                        : status === 'pending'
+                        ? 'Pending'
+                        : status === 'waiting_for_approval'
+                        ? 'Waiting'
+                        : 'Completed'}
+                    </button>
+                  ),
+                )}
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Overview cards */}
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="p-2 rounded-xl bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                <CheckSquare className="w-5 h-5" />
+              </div>
+              <span className="text-2xl font-bold text-gray-900 dark:text-white">
+                {filteredTasks.length}
+              </span>
+            </div>
+            <div>
+              <p className="font-semibold text-gray-900 dark:text-white">
+                Total tasks
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Across selected children.
+              </p>
+            </div>
+          </Card>
+
+          <Card className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="p-2 rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <span className="text-2xl font-bold text-gray-900 dark:text-white">
+                {
+                  filteredTasks.filter(
+                    (t) => t.status === 'waiting_for_approval',
+                  ).length
+                }
+              </span>
+            </div>
+            <div>
+              <p className="font-semibold text-gray-900 dark:text-white">
+                Needs approval
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Waiting for your review.
+              </p>
+            </div>
+          </Card>
+
+          <Card className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                <DollarSign className="w-5 h-5" />
+              </div>
+              <span className="text-2xl font-bold text-gray-900 dark:text-white">
+                {earnedThisWeek} kr
+              </span>
+            </div>
+            <div>
+              <p className="font-semibold text-gray-900 dark:text-white">
+                Earned this week
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Based on completed tasks.
+              </p>
+            </div>
+          </Card>
+        </div>
+
+        {/* Create task */}
+        <Card className="p-4">
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                Create new task
+              </h3>
+              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                <ShieldCheck className="h-3 w-3" />
+                Parents only
+              </span>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <Input
+                label="Task title"
+                placeholder="Clean your room"
+                value={newTask.title}
+                onChange={(e) =>
+                  setNewTask((prev) => ({ ...prev, title: e.target.value }))
+                }
+              />
+              <Input
+                label="Description (optional)"
+                placeholder="Make bed, tidy floor, put toys away"
+                value={newTask.description}
+                onChange={(e) =>
+                  setNewTask((prev) => ({ ...prev, description: e.target.value }))
+                }
+              />
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-200">
+                    Reward
+                  </label>
+                  <div className="flex items-center gap-2 rounded-full border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 shadow-sm focus-within:border-primary-500 focus-within:ring-1 focus-within:ring-primary-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                    <span className="inline-flex items-center justify-center rounded-full bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                      kr
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={newTask.reward}
+                      onChange={(e) =>
+                        setNewTask((prev) => ({
+                          ...prev,
+                          reward: Number(e.target.value),
+                        }))
+                      }
+                      className="h-6 flex-1 border-none bg-transparent p-0 text-xs focus:outline-none focus:ring-0"
+                    />
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-200">
+                    Assign to
+                  </label>
+                  <select
+                    className="block w-full rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                    value={newTask.assignedToId}
+                    onChange={(e) =>
+                      setNewTask((prev) => ({
+                        ...prev,
+                        assignedToId: e.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Select child</option>
+                    {familyChildren.map((child) => (
+                      <option key={child.id} value={child.id}>
+                        {child.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Tasks will appear in your child&apos;s list immediately.
+              </p>
+              <Button type="submit">
+                <Plus className="mr-1.5 h-4 w-4" />
+                Save task
+              </Button>
+            </div>
+          </form>
+        </Card>
+
+        {/* Task list */}
+        <Card className="p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+              All tasks
+            </h3>
+          </div>
+          <TaskList
+            tasks={visibleTasks}
+            users={users}
+            currentUser={currentUser}
+            onUpdateTask={handleUpdateTask}
+            onDeleteTask={handleDeleteTask}
+            onStatusChange={handleStatusChange}
+          />
+        </Card>
+      </div>
+    );
+  }
+
+  // Child view
+  const myTasks = tasks.filter((t) => t.assignedToId === currentUser.id);
+  const pending = myTasks.filter((t) => t.status === 'pending').length;
+  const waiting = myTasks.filter((t) => t.status === 'waiting_for_approval').length;
+
+  const completedStatuses: Task['status'][] = ['completed'];
+  const done = myTasks.filter((t) => completedStatuses.includes(t.status)).length;
+
+  const historyTasksChild = myTasks.filter((t) => completedStatuses.includes(t.status));
+  const totalEarnedAllTime = historyTasksChild.reduce((sum, t) => sum + t.reward, 0);
+
+  const thisWeekTasksChild = historyTasksChild.filter((t) => {
+    const dateToCheck = t.completedAt
+      ? new Date(t.completedAt * 1000)
+      : new Date(t.createdAt);
+    return isSameWeek(new Date(), dateToCheck);
+  });
+
+  const earnedThisWeekChild = thisWeekTasksChild.reduce(
+    (sum, t) => sum + t.reward,
+    0,
+  );
+
+  const weeklyAllowance = currentUser.weeklyAllowance ?? 0;
+  const allowanceProgress =
+    weeklyAllowance > 0 ? Math.min(earnedThisWeekChild / weeklyAllowance, 1) : 0;
+  const extraRewards =
+    weeklyAllowance > 0 && earnedThisWeekChild > weeklyAllowance
+      ? earnedThisWeekChild - weeklyAllowance
+      : 0;
+
+  const childActiveTasks = myTasks.filter(
+    (t) => t.status === 'pending' || t.status === 'waiting_for_approval',
+  );
+  const childHistoryTasks = myTasks.filter((t) => t.status === 'completed');
+
+  const childVisibleTasks =
+    childView === 'todo' ? childActiveTasks : childHistoryTasks;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
+          Hi {currentUser.name} 👋
+        </h2>
+        <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
+          Here is your week at a glance.
+        </p>
+      </div>
+
+      {/* Earnings */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="bg-gradient-to-br from-yellow-50 to-amber-100 dark:from-amber-900/40 dark:to-amber-900/10 border border-amber-200 dark:border-amber-800/50">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-white/60 dark:bg-black/20 rounded-full shadow-sm">
+              <Trophy className="w-8 h-8 text-yellow-600 dark:text-yellow-500" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-200 uppercase tracking-wide">
+                Total Earned
+              </p>
+              <p className="text-3xl font-extrabold text-yellow-900 dark:text-yellow-100">
+                {totalEarnedAllTime} kr
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-blue-50 to-indigo-100/80 dark:from-indigo-900/40 dark:to-indigo-900/10 border-blue-200 dark:border-blue-800/50">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-white/60 dark:bg-black/20 rounded-full shadow-sm">
+              <Calendar className="w-8 h-8 text-blue-600 dark:text-blue-500" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-blue-800 dark:text-blue-200 uppercase tracking-wide">
+                This Week
+              </p>
+              <p className="text-3xl font-extrabold text-blue-900 dark:text-blue-100">
+                {earnedThisWeekChild} kr
+              </p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {weeklyAllowance > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card className="flex flex-col gap-3">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-full bg-pink-100 dark:bg-pink-900/40 text-pink-700 dark:text-pink-200">
+                <PiggyBank className="w-8 h-8" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-pink-700 dark:text-pink-200">
+                  Weekly allowance
+                </p>
+                <p className="text-lg font-bold text-gray-900 dark:text-white">
+                  {earnedThisWeekChild} / {weeklyAllowance} kr
+                </p>
+                <div className="mt-2 h-2 w-full rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden">
+                  <div
+                    className="h-full bg-pink-500 dark:bg-pink-400"
+                    style={{ width: `${allowanceProgress * 100}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {extraRewards > 0 && (
+            <Card className="flex flex-col gap-3">
+              <div className="flex items-center gap-4">
+                <div className="p-3 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-200">
+                  <Coins className="w-8 h-8" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-200">
+                    Extra rewards
+                  </p>
+                  <p className="text-lg font-bold text-gray-900 dark:text-white">
+                    {extraRewards} kr
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    You earned more than your weekly allowance – nice work!
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Status cards */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="p-2 rounded-xl bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300">
+              <Clock className="w-5 h-5" />
+            </div>
+            <span className="text-2xl font-bold text-gray-900 dark:text-white">
+              {pending}
+            </span>
+          </div>
+          <div>
+            <p className="font-semibold text-gray-900 dark:text-white">
+              Pending tasks
+            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Waiting for you to complete.
+            </p>
+          </div>
+        </Card>
+
+        <Card className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <span className="text-2xl font-bold text-gray-900 dark:text-white">
+              {waiting}
+            </span>
+          </div>
+          <div>
+            <p className="font-semibold text-gray-900 dark:text-white">
+              Waiting for approval
+            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Your parent will check these soon.
+            </p>
+          </div>
+        </Card>
+
+        <Card className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">
+              <CheckCircle className="w-5 h-5" />
+            </div>
+            <span className="text-2xl font-bold text-gray-900 dark:text-white">
+              {done}
+            </span>
+          </div>
+          <div>
+            <p className="font-semibold text-gray-900 dark:text-white">
+              Completed tasks
+            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Great job!
+            </p>
+          </div>
+        </Card>
+      </div>
+
+      {/* Child task list */}
+      <Card className="p-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+            Your tasks
+          </h3>
+          <div className="inline-flex rounded-full bg-gray-100 p-0.5 text-xs dark:bg-gray-800">
+            <button
+              type="button"
+              onClick={() => setChildView('todo')}
+              className={`rounded-full px-3 py-1 font-medium transition ${
+                childView === 'todo'
+                  ? 'bg-white text-gray-900 shadow-sm dark:bg-primary-600 dark:text-white'
+                  : 'text-gray-600 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-700'
+              }`}
+            >
+              To do
+            </button>
+            <button
+              type="button"
+              onClick={() => setChildView('history')}
+              className={`rounded-full px-3 py-1 font-medium transition ${
+                childView === 'history'
+                  ? 'bg-white text-gray-900 shadow-sm dark:bg-primary-600 dark:text-white'
+                  : 'text-gray-600 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-700'
+              }`}
+            >
+              History
+            </button>
+          </div>
+        </div>
+        <TaskList
+          tasks={childVisibleTasks}
+          users={users}
+          currentUser={currentUser}
+          onUpdateTask={handleUpdateTask}
+          onStatusChange={handleStatusChange}
+        />
+      </Card>
+    </div>
+  );
+};
+
+// ============================================
+// Family Manager
+// ============================================
+
+interface FamilyManagerProps {
+  users: User[];
+  onUpdateUsers: (users: User[]) => void;
+}
+
+const ChildEditRow: React.FC<{
+  child: User;
+  onUpdate: (id: string, updates: Partial<User>) => void;
+}> = ({ child, onUpdate }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  const [phoneNumber, setPhoneNumber] = useState(child.phoneNumber || '');
+  const [balance, setBalance] = useState(child.balance ?? 0);
+  const [totalEarned, setTotalEarned] = useState(child.totalEarned ?? 0);
+  const [weeklyAllowance, setWeeklyAllowance] = useState<number>(
+    child.weeklyAllowance ?? 0,
+  );
+  const [currency, setCurrency] = useState<Currency>(child.currency || 'SEK');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
+    child.paymentMethod || 'swish',
+  );
+
+  // NOTE: we intentionally do NOT resync local state from props here,
+  // to avoid overwriting user edits while typing.
+
+  const handleBlur = (field: keyof User, value: any) => {
+    if (value !== child[field]) {
+      onUpdate(child.id, { [field]: value });
+    }
+  };
+
+  return (
+    <Card className="p-4">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-full bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-100 flex items-center justify-center text-lg">
+            {child.avatar || '👤'}
+          </div>
+          <div className="text-left">
+            <p className="font-medium text-gray-900 dark:text-white">
+              {child.name}
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {child.phoneNumber || 'No payment details set'}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+          <span>Details</span>
+          {expanded ? (
+            <ChevronUp className="w-4 h-4" />
+          ) : (
+            <ChevronDown className="w-4 h-4" />
+          )}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="mt-4 border-t border-gray-100 dark:border-gray-800 pt-4 space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Input
+              label="Phone / Payment identifier"
+              placeholder="07X-XXX XX XX"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              onBlur={() => handleBlur('phoneNumber', phoneNumber)}
+            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+                Default payment method
+              </label>
+              <select
+                value={paymentMethod}
+                onChange={(e) => {
+                  const val = e.target.value as PaymentMethod;
+                  setPaymentMethod(val);
+                  handleBlur('paymentMethod', val);
+                }}
+                className="block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+              >
+                <option value="swish">Swish</option>
+                <option value="venmo">Venmo</option>
+                <option value="cashapp">Cash App</option>
+                <option value="paypal">PayPal.me</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <Input
+              type="number"
+              label="Current balance (kr)"
+              value={balance}
+              onChange={(e) => setBalance(Number(e.target.value) || 0)}
+              onBlur={() => handleBlur('balance', balance)}
+            />
+            <Input
+              type="number"
+              label="Total earned (kr)"
+              value={totalEarned}
+              onChange={(e) => setTotalEarned(Number(e.target.value) || 0)}
+              onBlur={() => handleBlur('totalEarned', totalEarned)}
+            />
+            <Input
+              type="number"
+              label="Weekly allowance (kr/week)"
+              value={weeklyAllowance}
+              onChange={(e) => setWeeklyAllowance(Number(e.target.value) || 0)}
+              onBlur={() => handleBlur('weeklyAllowance', weeklyAllowance)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+              Currency
+            </label>
+            <select
+              value={currency}
+              onChange={(e) => {
+                const val = e.target.value as Currency;
+                setCurrency(val);
+                handleBlur('currency', val);
+              }}
+              className="block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+            >
+              <option value="SEK">SEK</option>
+              <option value="USD">USD</option>
+            </select>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+};
+
+export const FamilyManager: React.FC<FamilyManagerProps> = ({
+  users,
+  onUpdateUsers,
+}) => {
+  const parents = users.filter((u) => u.role === 'parent');
+  const children = users.filter((u) => u.role === 'child');
+
+  const [isAddingMember, setIsAddingMember] = useState(false);
+  const [newMemberName, setNewMemberName] = useState('');
+  const [newMemberPin, setNewMemberPin] = useState('');
+  const [newMemberRole, setNewMemberRole] = useState<'parent' | 'child'>('child');
+  const [newMemberAvatar, setNewMemberAvatar] = useState('👤'); // avatar default
+
+  const avatarOptions = [
+    '👨‍👩‍👧',
+    '🦸‍♂️',
+    '🦸‍♀️',
+    '🧚',
+    '🧞',
+    '🦊',
+    '🦄',
+    '🦖',
+    '⚽️',
+    '🎨',
+    '🎮',
+    '🎸',
+    '🤖',
+    '🦁',
+    '🐵',
+    '🐼',
+  ];
+
+  const handleUpdateUser = async (id: string, updates: Partial<User>) => {
+    try {
+      const updatedUser = await updateUserApi(id, updates);
+      const updatedUsers = users.map((u) => (u.id === id ? updatedUser : u));
+      onUpdateUsers(updatedUsers);
+    } catch (err) {
+      console.error('Failed to update user', err);
+    }
+  };
+
+  const handleAddMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedName = newMemberName.trim();
+    const trimmedPin = newMemberPin.trim();
+
+    if (!trimmedName || !trimmedPin) {
+      alert('Please enter a name and a 4-digit PIN.');
       return;
     }
 
     try {
-      const body: any = { status };
-      if (status === 'completed') {
-        body.completedAt = Math.floor(Date.now() / 1000);
-      } else if (status === 'pending') {
-        body.completedAt = null;
-      }
-      const updatedTask = await updateTaskApi(taskId, body);
-      const updatedTasks = tasks.map((t) =>
-        t.id === taskId ? (updatedTask as Task) : t
-      );
-      onStateChange({ tasks: updatedTasks });
-    } catch (err: any) {
-      console.error('Failed to update task status:', err);
-      alert('Could not update task. Please try again.');
+      const userPayload = {
+        name: trimmedName,
+        role: newMemberRole,
+        pin: trimmedPin,
+        avatar: newMemberAvatar,
+        phoneNumber: '',
+        paymentMethod: 'swish' as PaymentMethod,
+        currency: 'SEK' as const,
+        balance: 0,
+        totalEarned: 0,
+        weeklyAllowance: 0,
+      };
+
+      const savedUser = await createUserApi(userPayload);
+      onUpdateUsers([...users, savedUser]);
+
+      setNewMemberName('');
+      setNewMemberPin('');
+      setNewMemberRole('child');
+      setNewMemberAvatar('👤');
+      setIsAddingMember(false);
+    } catch (err) {
+      console.error('Failed to create family member', err);
+      alert('Could not create family member. Please try again.');
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-6">
-        <div>
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
-            {isParent ? 'Tasks Manager' : 'My Tasks'}
-          </h2>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-            {isParent
-              ? 'Create, assign and approve tasks for your family.'
-              : 'Complete tasks to earn your allowance!'}
+      {/* Add member form */}
+      {isAddingMember && (
+        <Card className="p-4 border-dashed border-primary-300 dark:border-primary-700">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+            Add family member
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Create a parent or child account for your family.
           </p>
-        </div>
-
-        {!isParent && (
-          <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl self-start">
-            <button
-              onClick={() => setChildView('todo')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                childView === 'todo'
-                  ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
-            >
-              To Do ({activeTasks.length})
-            </button>
-            <button
-              onClick={() => setChildView('history')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                childView === 'history'
-                  ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
-            >
-              <Trophy className="w-4 h-4 text-yellow-500" />
-              Progress
-            </button>
-          </div>
-        )}
-
-        {isParent && !isCreating && (
-          <Button onClick={() => setIsCreating(true)}>
-            <Plus size={18} />
-            New Task
-          </Button>
-        )}
-      </div>
-
-      {!isParent && childView === 'history' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 animate-in fade-in slide-in-from-top-4 duration-500">
-          <Card className="bg-gradient-to-br from-yellow-50 to-amber-100 dark:from-yellow-900/20 dark:to-amber-900/10 border-amber-200 dark:border-amber-800/50">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white/60 dark:bg-black/20 rounded-full shadow-sm">
-                <Trophy className="w-8 h-8 text-yellow-600 dark:text-yellow-500" />
-              </div>
+          <form onSubmit={handleAddMember} className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-3">
+              <Input
+                label="Name"
+                placeholder="William"
+                value={newMemberName}
+                onChange={(e) => setNewMemberName(e.target.value)}
+              />
+              <Input
+                label="PIN (4 digits)"
+                placeholder="1234"
+                maxLength={4}
+                value={newMemberPin}
+                onChange={(e) => setNewMemberPin(e.target.value)}
+              />
               <div>
-                <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-200 uppercase tracking-wide">
-                  Total Earned
-                </p>
-                <p className="text-3xl font-extrabold text-yellow-900 dark:text-yellow-100">
-                  {totalEarnedAllTime} kr
-                </p>
-                <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
-                  Great job! You've completed {historyTasks.length} tasks in total.
-                </p>
+                <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-200">
+                  Role
+                </label>
+                <div className="inline-flex rounded-full bg-gray-100 p-0.5 text-xs dark:bg-gray-800">
+                  <button
+                    type="button"
+                    onClick={() => setNewMemberRole('parent')}
+                    className={`rounded-full px-3 py-1 font-medium transition ${
+                      newMemberRole === 'parent'
+                        ? 'bg-white text-gray-900 shadow-sm dark:bg-primary-600 dark:text-white'
+                        : 'text-gray-600 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    Parent
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewMemberRole('child')}
+                    className={`rounded-full px-3 py-1 font-medium transition ${
+                      newMemberRole === 'child'
+                        ? 'bg-white text-gray-900 shadow-sm dark:bg-primary-600 dark:text-white'
+                        : 'text-gray-600 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    Child
+                  </button>
+                </div>
               </div>
             </div>
-          </Card>
 
-          <Card className="bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/10 border-blue-200 dark:border-blue-800/50">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white/60 dark:bg-black/20 rounded-full shadow-sm">
-                <Calendar className="w-8 h-8 text-blue-600 dark:text-blue-500" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-blue-800 dark:text-blue-200 uppercase tracking-wide">
-                  This Week
-                </p>
-                <p className="text-3xl font-extrabold text-blue-900 dark:text-blue-100">
-                  {earnedThisWeek} kr
-                </p>
-                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                  {thisWeekTasks.length} tasks finished this week. Keep it up!
-                </p>
+            {/* Avatar Picker for new member */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-200">
+                Choose avatar
+              </label>
+              <div className="grid grid-cols-4 gap-3 bg-gray-50 dark:bg-gray-900/40 p-3 rounded-2xl border border-gray-100 dark:border-gray-700/50">
+                {avatarOptions.map((a) => (
+                  <button
+                    key={a}
+                    type="button"
+                    onClick={() => setNewMemberAvatar(a)}
+                    className={`text-2xl h-10 w-full flex items-center justify-center rounded-xl border transition-all ${
+                      newMemberAvatar === a
+                        ? 'bg-white dark:bg-gray-700 shadow-md ring-2 ring-primary-500 scale-110'
+                        : 'opacity-70 hover:opacity-100 border-transparent'
+                    }`}
+                  >
+                    {a}
+                  </button>
+                ))}
               </div>
             </div>
-          </Card>
-        </div>
-      )}
 
-      {isParent && isCreating && (
-        <div className="mb-8 animate-in slide-in-from-top-4 fade-in duration-300">
-          <Card className="border-primary-200 dark:border-primary-900/50 ring-4 ring-primary-50 dark:ring-primary-900/20">
-            <div className="flex justify-between items-start mb-4">
-              <h3 className="font-bold text-lg text-gray-900 dark:text-white">Create New Task</h3>
+            <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setIsCreating(false)}
-                className="rounded-full p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
+                onClick={() => setIsAddingMember(false)}
+                className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200"
               >
-                <X size={18} />
+                <X className="h-3.5 w-3.5" />
+                Cancel
               </button>
+              <Button type="submit">
+                <UserPlus className="mr-1.5 h-4 w-4" />
+                Save member
+              </Button>
             </div>
-            <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-12 gap-4">
-              <div className="md:col-span-6">
-                <Input
-                  required
-                  label="Title"
-                  placeholder="e.g. Clean your room"
-                  value={newTask.title}
-                  onChange={(e) => setNewTask((t) => ({ ...t, title: e.target.value }))}
-                />
-              </div>
-              <div className="md:col-span-6">
-                <Input
-                  label="Description (optional)"
-                  placeholder="Add more details"
-                  value={newTask.description}
-                  onChange={(e) => setNewTask((t) => ({ ...t, description: e.target.value }))}
-                />
-              </div>
-              <div className="md:col-span-4">
-                <Input
-                  type="number"
-                  min={0}
-                  label="Reward (kr)"
-                  value={newTask.reward}
-                  onChange={(e) => setNewTask((t) => ({ ...t, reward: Number(e.target.value || 0) }))}
-                />
-              </div>
-              <div className="md:col-span-4">
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Assign to</label>
-                <select
-                  required
-                  value={newTask.assignedToId}
-                  onChange={(e) => setNewTask((t) => ({ ...t, assignedToId: e.target.value }))}
-                  className="block w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 shadow-sm focus:border-primary-500 focus:ring-2 focus:ring-primary-500/40 outline-none"
-                >
-                  <option value="">Choose a family member</option>
-                  {children.map((child) => (
-                    <option key={child.id} value={child.id}>{child.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="md:col-span-4 flex items-end justify-end gap-2">
-                <Button type="button" variant="ghost" onClick={() => setIsCreating(false)}>Cancel</Button>
-                <Button type="submit" disabled={!newTask.title || !newTask.assignedToId}><CheckCircle size={18} /> Save Task</Button>
-              </div>
-            </form>
-          </Card>
-        </div>
+          </form>
+        </Card>
       )}
 
-      {visibleTasks.length === 0 ? (
-        <Card className="flex flex-col items-center justify-center py-12 text-center space-y-3">
-          {childView === 'history' ? (
-             <>
-               <History className="w-10 h-10 text-gray-300 dark:text-gray-600" />
-               <h3 className="font-semibold text-gray-800 dark:text-gray-100">No history yet</h3>
-               <p className="text-sm text-gray-500 dark:text-gray-400">Complete tasks and ask your parent to approve them to see them here!</p>
-             </>
-          ) : (
-             <>
-               <CheckSquare className="w-10 h-10 text-gray-300 dark:text-gray-600" />
-               <h3 className="font-semibold text-gray-800 dark:text-gray-100">No tasks found</h3>
-               <p className="text-sm text-gray-500 dark:text-gray-400">
-                 {isParent ? 'Create a task and assign it to one of your children.' : 'You have no active tasks right now. Great job!'}
-               </p>
-             </>
+      {/* Parents */}
+      <section>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+              Parents
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Manage who can create tasks and approve rewards.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsAddingMember(true)}
+            className="inline-flex items-center gap-1 rounded-full bg-primary-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-primary-700"
+          >
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Add member
+          </button>
+        </div>
+
+        <div className="space-y-2">
+          {parents.length === 0 && (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              No parents added yet. Create one to manage tasks.
+            </p>
           )}
-        </Card>
-      ) : (
-        <div className="grid gap-4">
-          {!isParent && childView === 'history' && (
-             <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mt-4">Completed History</h3>
-          )}
-          {visibleTasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              assignedChild={users.find((u) => u.id === task.assignedToId)}
-              currentUser={currentUser}
-              onStatusChange={handleStatusChange}
-              onDelete={handleDelete}
-            />
+          {parents.map((parent) => (
+            <Card key={parent.id} className="flex items-center justify-between p-3">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-full bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-100 flex items-center justify-center text-lg">
+                  {parent.avatar || '👤'}
+                </div>
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white">
+                    {parent.name}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Parent · can approve tasks and send payments
+                  </p>
+                </div>
+              </div>
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-[11px] font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Admin
+              </span>
+            </Card>
           ))}
         </div>
-      )}
+      </section>
+
+      {/* Children */}
+      <section>
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+          Children
+        </h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          Set up payment details and balances for each child.
+        </p>
+        <div className="space-y-3">
+          {children.map((child) => (
+            <ChildEditRow key={child.id} child={child} onUpdate={handleUpdateUser} />
+          ))}
+        </div>
+      </section>
     </div>
   );
 };
 
-// ================ Home Dashboard ================
+// ============================================
+// Home Dashboard
+// ============================================
 
 interface HomeDashboardProps {
   currentUser: User;
@@ -537,562 +1508,504 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const [paymentModal, setPaymentModal] = useState<PaymentModalState | null>(null);
   const [paymentStep, setPaymentStep] = useState<'confirm' | 'verify'>('confirm');
 
-  // Initiera betalning (öppna modal)
   const initiatePayment = (childId: string) => {
     const child = users.find((u) => u.id === childId);
-    if (!child || (child.balance ?? 0) <= 0) return;
+    if (!child) return;
 
-    const method = child.paymentMethod ?? 'swish';
+    if (!child.paymentMethod || !child.phoneNumber) {
+      alert(
+        `Please set a payment method and identifier for ${child.name} in the Family tab before paying.`,
+      );
+      return;
+    }
+
+    if (!child.balance || child.balance <= 0) {
+      alert(`${child.name} has no pending allowance to pay.`);
+      return;
+    }
+
+    const method = child.paymentMethod as PaymentMethod;
+
     if (!child.phoneNumber) {
-      alert(`Please add a payment handle for ${child.name} in the Family tab before paying.`);
+      alert(
+        `Please add a payment handle for ${child.name} in the Family tab before paying.`,
+      );
       return;
     }
 
     const amount = child.balance ?? 0;
-    let url = '';
-    let label = 'Swish';
+let url = '';
+let label: string = 'Swish'; // CHANGED (explicit type, but behaviour same)
 
-    if (method === 'swish') {
-       if (!/^[0-9+ ]+$/.test(child.phoneNumber)) {
-        alert('Please enter a valid Swish phone number (digits and + only).');
-        return;
-      }
-      url = buildSwishPaymentUrl({ phoneNumber: child.phoneNumber, amount, message: 'Veckopeng' });
-      label = 'Swish';
-    } else if (method === 'venmo') {
-      url = buildVenmoPaymentUrl({ username: child.phoneNumber, amount, note: 'Veckopeng' });
-      label = 'Venmo';
-    } else if (method === 'cashapp') {
-      url = buildCashAppPaymentUrl({ cashtag: child.phoneNumber, amount, note: 'Veckopeng' });
-      label = 'Cash App';
-    }
+if (method === 'swish') {
+  url = buildSwishPaymentUrl({ phoneNumber: child.phoneNumber, amount });
+  label = 'Swish';
+} else if (method === 'venmo') {
+  url = buildVenmoPaymentUrl({ username: child.phoneNumber, amount });
+  label = 'Venmo';
+} else if (method === 'cashapp') {
+  url = buildCashAppPaymentUrl({ cashtag: child.phoneNumber, amount });
+  label = 'Cash App';
+} else if (method === 'paypal') { // CHANGED
+  const currency = (child.currency || 'SEK').toString(); // CHANGED
+  url = buildPaypalPaymentUrl({ // CHANGED
+    handle: child.phoneNumber, // still using the existing identifier field
+    amount,
+    currency,                  // pass child's currency (SEK, USD, etc.)
+  });
+  label = 'PayPal'; // CHANGED
+}
 
     setPaymentModal({
       childId: child.id,
       childName: child.name,
       amount,
       url,
-      methodLabel: label
+      methodLabel: label,
     });
     setPaymentStep('confirm');
   };
 
-  // Nollställ saldo (anropas när betalning är klar)
-  const completePayment = () => {
-    if (!paymentModal) return;
-    const updated = users.map((u) => u.id === paymentModal.childId ? { ...u, balance: 0 } : u);
-    onUpdateUsers(updated);
-    setPaymentModal(null);
+  const handleVerifyPayment = () => {
+    setPaymentStep('verify');
+  };
+
+  const handleConfirmPaid = async () => { // CHANGED
+    if (!paymentModal) return; // CHANGED
+    try { // CHANGED
+      const child = users.find((u) => u.id === paymentModal.childId); // CHANGED
+      if (!child) { // CHANGED
+        setPaymentModal(null); // CHANGED
+        return; // CHANGED
+      } // CHANGED
+
+      // Persist balance reset to backend // CHANGED
+      const updatedUser = await updateUserApi(child.id, { balance: 0 }); // CHANGED
+
+      // Update local users list to reflect backend // CHANGED
+      const updatedUsers = users.map((u) =>
+        u.id === updatedUser.id ? updatedUser : u,
+      ); // CHANGED
+
+      onUpdateUsers(updatedUsers); // CHANGED
+      setPaymentModal(null); // CHANGED
+    } catch (err) { // CHANGED
+      console.error('Failed to reset balance after payment', err); // CHANGED
+      alert('Failed to reset balance in Veckopeng. Please try again.'); // CHANGED
+    } // CHANGED
+  };
+
+  const handleSync = async () => {
+    try {
+      setSyncState('syncing');
+      await reload();
+      setSyncState('success');
+      setTimeout(() => setSyncState('idle'), 1500);
+    } catch (err) {
+      console.error('Failed to sync state', err);
+      setSyncState('idle');
+      alert('Failed to sync state. Please try again.');
+    }
   };
 
   if (!isParent) {
-    const myTasks = tasks.filter((t) => t.assignedToId === currentUser.id);
-    const pending = myTasks.filter((t) => t.status === 'pending').length;
-    const waiting = myTasks.filter((t) => t.status === 'waiting_for_approval').length;
-    
-    const completedStatuses: Task['status'][] = ['completed']; 
-    const done = myTasks.filter(t => completedStatuses.includes(t.status)).length; 
+    // Child view handled in TaskManager; we keep this early return to avoid breaking behavior
+    return null;
+  }
 
-    // --- NY LOGIK FÖR INTJÄNING (EARNINGS) ---
-    const historyTasks = myTasks.filter(t => completedStatuses.includes(t.status));
-    const totalEarnedAllTime = historyTasks.reduce((sum, t) => sum + t.reward, 0);
-    
-    const thisWeekTasks = historyTasks.filter(t => {
-      const dateToCheck = t.completedAt ? new Date(t.completedAt * 1000) : new Date(t.createdAt);
-      return isSameWeek(new Date(), dateToCheck);
-    });
-    const earnedThisWeek = thisWeekTasks.reduce((sum, t) => sum + t.reward, 0);
-    // ----------------------------------------
+  // Parent overview
+  const children = users.filter((u) => u.role === 'child');
+  const totalPending = tasks.filter((t) => t.status === 'pending').length;
+  const totalWaiting = tasks.filter((t) => t.status === 'waiting_for_approval').length;
+  const totalCompleted = tasks.filter((t) => t.status === 'completed').length;
 
-    return (
-      <div className="space-y-6">
+  const totalBalances = children.reduce((sum, c) => sum + (c.balance ?? 0), 0);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Hi {currentUser.name} 👋</h2>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Here is your week at a glance.</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+            Overview
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            See how your family is doing this week.
+          </p>
         </div>
+        <button
+          type="button"
+          onClick={handleSync}
+          className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+        >
+          {syncState === 'syncing' ? (
+            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" />
+          )}
+          Sync
+        </button>
+      </div>
 
-        {/* --- EARNINGS CARDS START --- */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Card className="bg-gradient-to-br from-yellow-50 to-amber-100 dark:from-yellow-900/20 dark:to-amber-900/10 border-amber-200 dark:border-amber-800/50">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white/60 dark:bg-black/20 rounded-full shadow-sm">
-                <Trophy className="w-8 h-8 text-yellow-600 dark:text-yellow-500" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-200 uppercase tracking-wide">
-                  Total Earned
-                </p>
-                <p className="text-3xl font-extrabold text-yellow-900 dark:text-yellow-100">
-                  {totalEarnedAllTime} kr
-                </p>
-              </div>
+      {/* High-level stats */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div className="p-2 rounded-xl bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+              <CheckSquare className="w-5 h-5" />
             </div>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/10 border-blue-200 dark:border-blue-800/50">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white/60 dark:bg-black/20 rounded-full shadow-sm">
-                <Calendar className="w-8 h-8 text-blue-600 dark:text-blue-500" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-blue-800 dark:text-blue-200 uppercase tracking-wide">
-                  This Week
-                </p>
-                <p className="text-3xl font-extrabold text-blue-900 dark:text-blue-100">
-                  {earnedThisWeek} kr
-                </p>
-              </div>
-            </div>
-          </Card>
-        </div>
-        {/* --- EARNINGS CARDS END --- */}
-
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card className="flex flex-col gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors" onClick={() => onNavigate('tasks')}>
-            <div className="flex items-center justify-between">
-              <div className="p-2 rounded-xl bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300"><Clock className="w-5 h-5" /></div>
-              <span className="text-2xl font-bold text-gray-900 dark:text-white">{pending}</span>
-            </div>
-            <div><p className="font-semibold text-gray-900 dark:text-white">Tasks to do</p><p className="text-sm text-gray-500 dark:text-gray-400">Waiting for you to complete.</p></div>
-          </Card>
-
-          <Card className="flex flex-col gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors" onClick={() => onNavigate('tasks')}>
-            <div className="flex items-center justify-between">
-              <div className="p-2 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"><AlertCircle className="w-5 h-5" /></div>
-              <span className="text-2xl font-bold text-gray-900 dark:text-white">{waiting}</span>
-            </div>
-            <div><p className="font-semibold text-gray-900 dark:text-white">Waiting for approval</p><p className="text-sm text-gray-500 dark:text-gray-400">Your parent will review these.</p></div>
-          </Card>
-
-          <Card className="flex flex-col gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors" onClick={() => onNavigate('tasks')}>
-            <div className="flex items-center justify-between">
-              <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"><CheckCircle className="w-5 h-5" /></div>
-              <span className="text-2xl font-bold text-gray-900 dark:text-white">{done}</span>
-            </div>
-            <div><p className="font-semibold text-gray-900 dark:text-white">Completed tasks</p><p className="text-sm text-gray-500 dark:text-gray-400">Great job!</p></div>
-          </Card>
-        </div>
-
-        <Card className="flex items-center justify-between gap-4">
-          <div>
-            <p className="font-semibold text-gray-900 dark:text-white mb-1">Go to your tasks</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">See details and mark tasks as done when you complete them.</p>
+            <span className="text-xl font-bold text-gray-900 dark:text-white">
+              {tasks.length}
+            </span>
           </div>
-          <Button onClick={() => onNavigate('tasks')}><CheckSquare className="w-4 h-4" /> Open tasks</Button>
+          <p className="text-sm font-semibold text-gray-900 dark:text-white">
+            Total tasks
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Across all children
+          </p>
         </Card>
+
+        <Card className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div className="p-2 rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+              <Clock className="w-5 h-5" />
+            </div>
+            <span className="text-xl font-bold text-gray-900 dark:text-white">
+              {totalPending}
+            </span>
+          </div>
+          <p className="text-sm font-semibold text-gray-900 dark:text-white">
+            Pending
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Not started yet
+          </p>
+        </Card>
+
+        <Card className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div className="p-2 rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <span className="text-xl font-bold text-gray-900 dark:text-white">
+              {totalWaiting}
+            </span>
+          </div>
+          <p className="text-sm font-semibold text-gray-900 dark:text-white">
+            Waiting approval
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Needs your review
+          </p>
+        </Card>
+
+        <Card className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+              <DollarSign className="w-5 h-5" />
+            </div>
+            <span className="text-xl font-bold text-gray-900 dark:text-white">
+              {totalBalances} kr
+            </span>
+          </div>
+          <p className="text-sm font-semibold text-gray-900 dark:text-white">
+            To be paid
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Current balances
+          </p>
+        </Card>
+      </div>
+
+      {/* Children list with pay buttons */}
+      <Card className="p-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+            Children balances
+          </h3>
+          <button
+            type="button"
+            onClick={() => onNavigate('family')}
+            className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200"
+          >
+            <Users className="h-3.5 w-3.5" />
+            Manage family
+          </button>
+        </div>
+
+        {children.length === 0 ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            No children added yet. Go to the Family tab to add them.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {children.map((child) => (
+              <div
+                key={child.id}
+                className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm dark:border-gray-800 dark:bg-gray-900"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-full bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-100 flex items-center justify-center text-lg">
+                    {child.avatar || '👤'}
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-white">
+                      {child.name}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Balance:{' '}
+                      <span className="font-semibold text-gray-900 dark:text-white">
+                        {child.balance ?? 0} kr
+                      </span>
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => initiatePayment(child.id)}
+                    className="inline-flex items-center gap-1 rounded-full bg-primary-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-primary-700"
+                  >
+                    <Smartphone className="h-3.5 w-3.5" />
+                    Pay
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* Payment modal */}
+      {paymentModal && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg dark:bg-gray-900">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Pay {paymentModal.childName}
+              </h3>
+              <button
+                onClick={() => setPaymentModal(null)}
+                className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {paymentStep === 'confirm' && (
+              <div className="space-y-4 text-sm">
+                <p className="text-gray-600 dark:text-gray-300">
+                  You&apos;re about to open{' '}
+                  <span className="font-semibold">{paymentModal.methodLabel}</span> with
+                  the amount pre-filled.
+                </p>
+                <div className="rounded-xl bg-gray-50 p-3 text-gray-800 dark:bg-gray-800 dark:text-gray-100">
+                  <p className="flex items-center justify-between text-sm">
+                    <span>Child</span>
+                    <span className="font-semibold">
+                      {paymentModal.childName}
+                    </span>
+                  </p>
+                  <p className="flex items-center justify-between text-sm">
+                    <span>Amount</span>
+                    <span className="font-semibold">
+                      {paymentModal.amount} kr
+                    </span>
+                  </p>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentModal(null)}
+                    className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Cancel
+                  </button>
+                  <a
+                    href={paymentModal.url}
+                    onClick={handleVerifyPayment}
+                    className="inline-flex items-center gap-1 rounded-full bg-primary-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-primary-700"
+                  >
+                    <Smartphone className="h-3.5 w-3.5" />
+                    Open {paymentModal.methodLabel}
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {paymentStep === 'verify' && (
+              <div className="space-y-4 text-sm">
+                <p className="text-gray-600 dark:text-gray-300">
+                  Please confirm that you completed the payment in{' '}
+                  {paymentModal.methodLabel}. Once confirmed, the child&apos;s balance
+                  will be reset to 0 kr in Veckopeng.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentModal(null)}
+                    className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmPaid}
+                    className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-emerald-700"
+                  >
+                    <CheckCircle className="h-3.5 w-3.5" />
+                    Yes, payment is done
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================
+// Layout Views Root
+// ============================================
+
+interface ViewsProps {
+  currentUser: User | null;
+  state: AppState;
+  onUpdateState: (partial: Partial<AppState>) => void;
+  onLogout: () => void;
+  activeTab: 'home' | 'tasks' | 'family';
+  onTabChange: (tab: 'home' | 'tasks' | 'family') => void;
+}
+
+export const Views: React.FC<ViewsProps> = ({
+  currentUser,
+  state,
+  onUpdateState,
+  onLogout,
+  activeTab,
+  onTabChange,
+}) => {
+  const { users, tasks } = state;
+  const { reload } = useAppState();
+  const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'success'>('idle');
+
+  const hasParent = users.some((u) => u.role === 'parent');
+  const setupComplete = hasParent;
+
+  const handleSync = async () => {
+    try {
+      setSyncState('syncing');
+      await reload();
+      setSyncState('success');
+      setTimeout(() => setSyncState('idle'), 1500);
+    } catch (err) {
+      console.error('Failed to sync state', err);
+      setSyncState('idle');
+      alert('Failed to sync state. Please try again.');
+    }
+  };
+
+  const handleSetupComplete = async () => {
+    try {
+      await reload();
+    } catch (err) {
+      console.error('Failed to reload after setup (Views)', err);
+    }
+  };
+
+  if (!setupComplete) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
+        <Setup onComplete={handleSetupComplete} isFirstRun={!hasParent} />
       </div>
     );
   }
 
-  // Parent view
-  const children = users.filter((u) => u.role === 'child');
-  const totalBalance = children.reduce((sum, c) => sum + (c.balance ?? 0), 0);
-  const waitingTasks = tasks.filter((t) => t.status === 'waiting_for_approval');
+  if (!currentUser) {
+    return null;
+  }
+
+  const handleUpdateUsers = (updatedUsers: User[]) => {
+    onUpdateState({ users: updatedUsers });
+  };
+
+  const handleUpdateTasks = (updatedTasks: Task[]) => {
+    onUpdateState({ tasks: updatedTasks });
+  };
 
   return (
-    <>
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Welcome back, {currentUser.name} 👋</h2>
-          <div className="flex items-center justify-between mt-1">
-            <p className="text-gray-500 dark:text-gray-400 text-sm">Overview of your family’s chores, allowance and approvals.</p>
-            <div className="h-5 flex items-center">
-              {syncState === 'syncing' && <p className="text-xs text-blue-500 dark:text-blue-300 animate-pulse font-medium">Syncing...</p>}
-              {syncState === 'success' && (
-                <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1 animate-in fade-in slide-in-from-left-2 duration-300 font-medium">
-                  <CheckCircle className="w-3 h-3" /> Updated
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
+    <div className="min-h-screen bg-gray-50 pb-20 dark:bg-gray-950">
+      <div className="mx-auto max-w-5xl px-4 pt-4 pb-24 sm:px-6 lg:px-8">
+        {activeTab === 'home' && (
+          <HomeDashboard
+            currentUser={currentUser}
+            users={users}
+            tasks={tasks}
+            onUpdateUsers={handleUpdateUsers}
+            onNavigate={(tab) => onTabChange(tab as 'tasks' | 'family')}
+          />
+        )}
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <div className="p-2 rounded-xl bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300"><Wallet className="w-5 h-5" /></div>
-              <span className="text-2xl font-bold text-gray-900 dark:text-white">{totalBalance} kr</span>
-            </div>
-            <div><p className="font-semibold text-gray-900 dark:text-white">Total pending payouts</p><p className="text-sm text-gray-500 dark:text-gray-400">Sum of all childrens’ current balances.</p></div>
-          </Card>
-
-          <Card className="flex flex-col gap-3 cursor-pointer" onClick={() => onNavigate('tasks')}>
-            <div className="flex items-center justify-between">
-              <div className="p-2 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"><AlertCircle className="w-5 h-5" /></div>
-              <span className="text-2xl font-bold text-gray-900 dark:text-white">{waitingTasks.length}</span>
-            </div>
-            <div><p className="font-semibold text-gray-900 dark:text-white">Waiting approvals</p><p className="text-sm text-gray-500 dark:text-gray-400">Tasks that children have sent for approval.</p></div>
-          </Card>
-
-          <Card className="flex flex-col gap-3 cursor-pointer" onClick={() => onNavigate('family')}>
-            <div className="flex items-center justify-between">
-              <div className="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200"><UserIcon className="w-5 h-5" /></div>
-              <span className="text-2xl font-bold text-gray-900 dark:text-white">{children.length}</span>
-            </div>
-            <div><p className="font-semibold text-gray-900 dark:text-white">Children</p><p className="text-sm text-gray-500 dark:text-gray-400">Manage family members and phone numbers.</p></div>
-          </Card>
-        </div>
-
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Children overview</h3>
-          {children.length === 0 ? (
-            <Card className="text-center py-8"><p className="text-sm text-gray-500 dark:text-gray-400">No children added yet. Go to the Family tab to add your first child.</p></Card>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {children.map((child) => {
-                const childTasks = tasks.filter((t) => t.assignedToId === child.id);
-                const pending = childTasks.filter((t) => t.status === 'pending').length;
-                const waiting = childTasks.filter((t) => t.status === 'waiting_for_approval').length;
-                
-                const completedStatuses: Task['status'][] = ['completed']; 
-                const completed = childTasks.filter(t => completedStatuses.includes(t.status)).length; 
-
-
-                return (
-                  <Card key={child.id} className="flex flex-col gap-3">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h4 className="font-semibold text-gray-900 dark:text-white">{child.name}</h4>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Child</p>
-                        {child.phoneNumber && <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 font-mono">{child.phoneNumber}</p>}
-                      </div>
-                      <div className="text-right">
-                        <div className="inline-flex items-center gap-1 text-sm font-semibold text-gray-900 dark:text-white"><DollarSign className="w-4 h-4" /> {child.balance ?? 0} kr</div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Current balance</p>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      <span className="inline-flex items-center px-2 py-1 rounded-full bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300"><Clock className="w-3 h-3 mr-1" /> {pending} to do</span>
-                      <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"><AlertCircle className="w-3 h-3 mr-1" /> {waiting} waiting</span>
-                      <span className="inline-flex items-center px-2 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"><CheckCircle className="w-3 h-3 mr-1" /> {completed} done</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2 justify-between items-center pt-2 border-t border-gray-100 dark:border-gray-800 mt-2">
-                      <Button variant="secondary" onClick={() => onNavigate('tasks')}><CheckSquare className="w-4 h-4" /> View tasks</Button>
-                      <div className="flex flex-wrap gap-2">
-                        {(() => {
-                          const method = child.paymentMethod ?? 'swish';
-                          const hasHandle = !!child.phoneNumber;
-                          const hasPositiveBalance = (child.balance ?? 0) > 0;
-                          let label = 'Pay'; let title = ''; let canPay = hasHandle && hasPositiveBalance;
-                          if (method === 'swish') {
-                            label = 'Swish'; title = hasHandle ? 'Open Swish' : 'Requires Swish number';
-                            if (!child.phoneNumber || !/^[0-9+ ]+$/.test(child.phoneNumber)) { canPay = false; title = 'Invalid Swish number'; }
-                          } else if (method === 'venmo') { label = 'Venmo'; title = hasHandle ? 'Open Venmo' : 'Requires Venmo username'; }
-                          else if (method === 'cashapp') { label = 'Cash App'; title = hasHandle ? 'Open Cash App' : 'Requires Cash App tag'; }
-                          if (!title) title = 'Set a payment method first.';
-                          return <Button variant="primary" disabled={!canPay} onClick={() => initiatePayment(child.id)} title={title}><Smartphone className="w-4 h-4" /> {label}</Button>;
-                        })()}
-                      </div>
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* --- PAYMENT MODAL --- */}
-      {paymentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <Card className="w-full max-w-sm shadow-2xl scale-100 animate-in zoom-in-95 duration-200 relative">
-            <button 
-              onClick={() => setPaymentModal(null)}
-              className="absolute top-4 right-4 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="text-center pt-2 pb-6">
-              <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${
-                paymentStep === 'confirm' 
-                  ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
-                  : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-              }`}>
-                {paymentStep === 'confirm' ? (
-                  <Smartphone className="w-8 h-8" />
-                ) : (
-                  <Check className="w-8 h-8" />
-                )}
-              </div>
-              
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-                {paymentStep === 'confirm' ? 'Send Payment' : 'Did it work?'}
-              </h3>
-              
-              {paymentStep === 'confirm' ? (
-                <p className="text-gray-500 dark:text-gray-400 mb-6">
-                  Open {paymentModal.methodLabel} to send <strong className="text-gray-900 dark:text-white">{paymentModal.amount} kr</strong> to {paymentModal.childName}?
-                </p>
-              ) : (
-                <p className="text-gray-500 dark:text-gray-400 mb-6">
-                  If the payment was successful, we can reset {paymentModal.childName}'s balance to 0.
-                </p>
-              )}
-
-              <div className="space-y-3">
-                {paymentStep === 'confirm' ? (
-                  <>
-                    <Button 
-                      size="lg" 
-                      fullWidth 
-                      className="bg-[#0D0D0D] dark:bg-white hover:bg-gray-800 dark:hover:bg-gray-200 text-white dark:text-black"
-                      onClick={() => {
-                        window.location.href = paymentModal.url;
-                        setPaymentStep('verify');
-                      }}
-                    >
-                      Open {paymentModal.methodLabel} App
-                      <ExternalLink className="w-4 h-4 ml-2 opacity-50" />
-                    </Button>
-                    
-                    <button 
-                      onClick={() => setPaymentStep('verify')}
-                      className="text-sm text-gray-500 hover:text-gray-900 dark:hover:text-gray-300 underline"
-                    >
-                      I paid manually (or on desktop)
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <Button 
-                      size="lg" 
-                      fullWidth 
-                      onClick={completePayment}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                    >
-                      Yes, reset balance to 0
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      fullWidth
-                      onClick={() => setPaymentModal(null)}
-                    >
-                      No, keep balance
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-          </Card>
-        </div>
-      )}
-    </>
-  );
-};
-
-// ================ Family Manager ================
-
-interface FamilyManagerProps {
-  users: User[];
-  onUpdateUsers: (users: User[]) => void;
-}
-
-export const FamilyManager: React.FC<FamilyManagerProps> = ({
-  users,
-  onUpdateUsers,
-}) => {
-  const [isAdding, setIsAdding] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-
-  // Edit Form State
-  const [editName, setEditName] = useState('');
-  const [editPin, setEditPin] = useState('');
-  const [editPhone, setEditPhone] = useState('');
-  const [editPayment, setEditPayment] = useState<PaymentMethod>('swish');
-
-  // Populate form when editing starts
-  useEffect(() => {
-    if (editingUser) {
-      setEditName(editingUser.name);
-      setEditPin(editingUser.pin);
-      setEditPhone(editingUser.phoneNumber || '');
-      setEditPayment(editingUser.paymentMethod || 'swish');
-    }
-  }, [editingUser]);
-
-  const handleAddUser = (newUser: User) => {
-    // Check if phone number already exists
-    if (newUser.phoneNumber) {
-      const existing = users.find(u => u.phoneNumber === newUser.phoneNumber);
-      if (existing) {
-        const confirm = window.confirm(
-          `Number ${newUser.phoneNumber} is already used by ${existing.name}. Do you want to add this user anyway?`
-        );
-        if (!confirm) return;
-      }
-    }
-    onUpdateUsers([...users, newUser]);
-    setIsAdding(false);
-  };
-
-  const handleSaveEdit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingUser) return;
-
-    const updatedUsers = users.map(u => {
-      if (u.id === editingUser.id) {
-        return {
-          ...u,
-          name: editName,
-          pin: editPin,
-          phoneNumber: editPhone || undefined,
-          paymentMethod: u.role === 'child' ? editPayment : undefined,
-          updatedAt: Date.now()
-        };
-      }
-      return u;
-    });
-
-    onUpdateUsers(updatedUsers);
-    setEditingUser(null);
-  };
-
-  const handleDeleteUser = (userId: string, userName: string) => {
-    if (window.confirm(`Are you sure you want to remove ${userName}? This cannot be undone.`)) {
-      const updatedUsers = users.filter(u => u.id !== userId);
-      onUpdateUsers(updatedUsers);
-    }
-  };
-
-  // Find duplicate phone number user (if any) during edit
-  const duplicatePhoneUser = editPhone 
-    ? users.find(u => u.phoneNumber === editPhone && u.id !== editingUser?.id)
-    : null;
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center mb-6">
-        <div><h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Family members</h2><p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Manage parents, children and phone numbers.</p></div>
-        {!isAdding && <Button onClick={() => setIsAdding(true)}><UserIcon size={18} /> Add member</Button>}
-      </div>
-
-      {isAdding && (
-        <div className="animate-in slide-in-from-top-4 fade-in duration-300 max-w-md mx-auto mb-8">
-          <Setup isFirstRun={false} onComplete={handleAddUser} />
-          <div className="text-center mt-4"><Button variant="ghost" onClick={() => setIsAdding(false)}>Cancel</Button></div>
-        </div>
-      )}
-
-      {/* --- EDIT MODAL --- */}
-      {editingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <Card className="w-full max-w-sm shadow-2xl relative">
-            <button 
-              onClick={() => setEditingUser(null)}
-              className="absolute top-4 right-4 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Edit {editingUser.name}</h3>
-            
-            <form onSubmit={handleSaveEdit} className="space-y-4">
-              <Input 
-                label="Name" 
-                value={editName} 
-                onChange={e => setEditName(e.target.value)} 
-                required 
-              />
-              
+        {activeTab === 'tasks' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-2">
               <div>
-                 <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2 ml-1">
-                  PIN Code
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-3 flex items-center"><Lock className="w-4 h-4 text-gray-400" /></div>
-                  <input
-                    type="text" 
-                    maxLength={4}
-                    pattern="\d{4}"
-                    value={editPin}
-                    onChange={e => setEditPin(e.target.value.replace(/\D/g, ''))}
-                    className="w-full pl-10 pr-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 text-gray-900 dark:text-white font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
-                </div>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+                  Tasks
+                </h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Create, assign, and track family tasks.
+                </p>
               </div>
-
-              {editingUser.role === 'child' && (
-                <>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2 ml-1">Payment Method</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(['swish', 'venmo', 'cashapp'] as PaymentMethod[]).map((m) => (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => setEditPayment(m)}
-                          className={`px-2 py-1.5 text-xs font-medium rounded-lg capitalize border transition-colors ${
-                            editPayment === m
-                              ? 'bg-emerald-50 border-emerald-500 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
-                              : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400'
-                          }`}
-                        >
-                          {m}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <Input 
-                      label={editPayment === 'swish' ? 'Phone Number' : editPayment === 'venmo' ? 'Venmo Username' : '$Cashtag'}
-                      value={editPhone} 
-                      onChange={e => setEditPhone(e.target.value)} 
-                      placeholder={editPayment === 'swish' ? '070...' : '@username'}
-                      className={duplicatePhoneUser ? 'border-red-500 focus:ring-red-200' : ''}
-                    />
-                    {duplicatePhoneUser && (
-                      <p className="text-xs text-red-500 mt-1 flex items-center gap-1 animate-in slide-in-from-top-1">
-                        <AlertTriangle className="w-3 h-3" />
-                        This number is already used by {duplicatePhoneUser.name}
-                      </p>
-                    )}
-                  </div>
-                </>
-              )}
-
-              <Button type="submit" fullWidth className="mt-2">Save Changes</Button>
-            </form>
-          </Card>
-        </div>
-      )}
-
-      <div className="grid gap-4 md:grid-cols-2">
-        {users.map((u) => (
-          <Card key={u.id} className="flex items-start justify-between gap-4 group relative">
-            <div>
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 text-white flex items-center justify-center text-sm font-semibold">{u.name.split(' ').map((p) => p[0]).join('').toUpperCase()}</div>
-                <div><p className="font-semibold text-gray-900 dark:text-white">{u.name}</p><p className="text-xs text-gray-500 dark:text-gray-400">{u.role === 'parent' ? 'Parent' : 'Child'}</p></div>
-              </div>
-              {u.phoneNumber && <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 font-mono">{u.phoneNumber}</p>}
-              {typeof u.balance === 'number' && u.role === 'child' && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 inline-flex items-center gap-1"><Wallet className="w-3 h-3" /> Balance: <span className="font-medium text-gray-900 dark:text-white">{u.balance} kr</span></p>
-              )}
+              <button
+                type="button"
+                onClick={handleSync}
+                className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+              >
+                {syncState === 'syncing' ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                Sync
+              </button>
             </div>
-            
-            <div className="flex flex-col items-end gap-2">
-              <span className={`inline-flex items-center px-2 py-1 rounded-full text-[11px] font-medium ${u.role === 'parent' ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'bg-pink-50 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300'}`}>{u.role}</span>
-              
-              <div className="flex gap-1 mt-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                <button 
-                  onClick={() => setEditingUser(u)}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-                  title="Edit member"
-                >
-                  <Pencil className="w-4 h-4" />
-                </button>
-                <button 
-                  onClick={() => handleDeleteUser(u.id, u.name)}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                  title="Remove member"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+            <TaskManager
+              currentUser={currentUser}
+              users={users}
+              tasks={tasks}
+              onStateChange={onUpdateState}
+            />
+          </div>
+        )}
+
+        {activeTab === 'family' && currentUser.role === 'parent' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+                  Family
+                </h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Manage parents, children, and payment details.
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={() => onTabChange('home')}
+                className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back to overview
+              </button>
             </div>
-          </Card>
-        ))}
+            <FamilyManager users={users} onUpdateUsers={handleUpdateUsers} />
+          </div>
+        )}
       </div>
     </div>
   );

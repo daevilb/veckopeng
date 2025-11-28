@@ -3,10 +3,11 @@ import { User, Role, PaymentMethod, Currency } from "../types";
 import { Button } from "./Button";
 import { Input } from "./Input";
 import { Card } from "./Card";
-import { UserPlus, Lock, Phone, ChevronLeft, Check } from "lucide-react";
-import { generateId } from "../utils/id";
+import { UserPlus, Lock, ChevronLeft, Check } from "lucide-react";
+import { createUserApi } from "../services/api"; // Import the API
 
 interface SetupProps {
+  // Fixed: onComplete now returns the full User (with ID) again
   onComplete: (user: User) => void;
   isFirstRun: boolean;
 }
@@ -19,6 +20,7 @@ export const Setup: React.FC<SetupProps> = ({ onComplete, isFirstRun }) => {
   const [phone, setPhone] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("swish");
   const [currency, setCurrency] = useState<Currency>("SEK");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const avatars = [
     "👨‍👩‍👧",
@@ -53,12 +55,13 @@ export const Setup: React.FC<SetupProps> = ({ onComplete, isFirstRun }) => {
       ? "@username"
       : "$cashtag";
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (pin.length !== 4) return alert("PIN must be 4 digits");
 
-    const newUser: User = {
-      id: generateId(),
+    setIsSubmitting(true);
+
+    const newUserPayload = {
       name,
       role,
       pin,
@@ -70,7 +73,17 @@ export const Setup: React.FC<SetupProps> = ({ onComplete, isFirstRun }) => {
       totalEarned: 0,
     };
 
-    onComplete(newUser);
+    try {
+      // Create user in DB first to get the ID
+      const createdUser = await createUserApi(newUserPayload);
+      // Pass the full user (with ID) to the parent
+      onComplete(createdUser);
+    } catch (error) {
+      console.error("Failed to create user:", error);
+      alert("Failed to create user. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -114,11 +127,12 @@ export const Setup: React.FC<SetupProps> = ({ onComplete, isFirstRun }) => {
             <form onSubmit={handleSubmit}>
               {/* Name */}
               <Input
-                label="Name"
+                // CHANGED: clarify first-time setup is for parent only
+                label={isFirstRun ? "Parent name" : "Name"}
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Parent or child name"
+                placeholder={isFirstRun ? "Parent name" : "Parent or child name"}
               />
 
               {/* PIN */}
@@ -300,9 +314,19 @@ export const Setup: React.FC<SetupProps> = ({ onComplete, isFirstRun }) => {
                 </>
               )}
 
-              <Button type="submit" fullWidth size="lg" className="mt-4">
+              <Button
+                type="submit"
+                fullWidth
+                size="lg"
+                className="mt-4"
+                disabled={isSubmitting}
+              >
                 <UserPlus className="w-5 h-5" />
-                {isFirstRun ? "Start App" : "Create Account"}
+                {isSubmitting
+                  ? "Creating Account..."
+                  : isFirstRun
+                  ? "Start App"
+                  : "Create Account"}
               </Button>
             </form>
           </div>

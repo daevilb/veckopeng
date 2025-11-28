@@ -10,7 +10,7 @@ services:
     volumes:
       - veckopeng_data:/data
     environment:
-      FAMILY_API_KEY: "${FAMILY_API_KEY}"
+      # FAMILY_API_KEY: "${FAMILY_API_KEY}"
       NODE_ENV: "production"
     restart: always
 

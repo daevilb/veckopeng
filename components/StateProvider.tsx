@@ -1,96 +1,50 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { AppState, DEFAULT_STATE } from "../types";
-import { fetchState, saveState } from "../services/api";
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { AppState, DEFAULT_STATE, User, Task } from '../types';
+import { fetchState } from '../services/api';
 
-interface StateContextType {
+interface AppStateContextType {
   state: AppState;
-  setPartial: (update: Partial<AppState>) => Promise<void>;
   reload: () => Promise<void>;
+  setPartial: (changes: Partial<AppState>) => void;
 }
 
-const StateContext = createContext<StateContextType | undefined>(undefined);
+const AppStateContext = createContext<AppStateContextType>({
+  state: DEFAULT_STATE,
+  reload: async () => {},
+  setPartial: () => {},
+});
+
+export const useAppState = () => useContext(AppStateContext);
 
 export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<AppState>(DEFAULT_STATE);
-  const [loaded, setLoaded] = useState(false);
 
-  // Ladda initial state från backend vid start
-  useEffect(() => {
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // 1. Fetch from Backend on Mount
+  const reload = useCallback(async () => {
+    try {
+      const serverState = await fetchState();
+      setState(serverState);
+    } catch (error) {
+      console.error("Failed to load state from server:", error);
+    }
   }, []);
 
-  const reload = async () => {
-    try {
-      const newState = await fetchState();
-      setState(newState);
-    } catch (error) {
-      console.error("Failed to fetch state:", error);
-      // Fallback så appen fortfarande funkar
-      setState(DEFAULT_STATE);
-    } finally {
-      setLoaded(true);
-    }
+  useEffect(() => {
+    reload();
+    
+    // Optional: Poll every 5 seconds to keep devices in sync
+    const interval = setInterval(reload, 5000);
+    return () => clearInterval(interval);
+  }, [reload]);
+
+  // 2. Optimistic Updates (Update UI immediately, backend handles persistence via api.ts calls)
+  const setPartial = (changes: Partial<AppState>) => {
+    setState((prev) => ({ ...prev, ...changes }));
   };
-
-  /**
-   * Säkert sätt att uppdatera delar av state.
-   *
-   * - Använder funktionell setState(prev => ...) så att flera snabba
-   *   uppdateringar inte skriver över varandra.
-   * - Mergar partial state med tidigare state.
-   * - Sparar det mergade statet till backend.
-   *
-   * Det här fixar buggen där uppdatering av users kunde tappas bort
-   * när tasks uppdaterades direkt efteråt.
-   */
-  const setPartial = async (update: Partial<AppState>) => {
-    let mergedForSave: AppState = DEFAULT_STATE;
-
-    setState((prev) => {
-      const merged: AppState = {
-        ...prev,
-        ...update,
-      };
-      mergedForSave = merged;
-      return merged;
-    });
-
-    try {
-      await saveState(mergedForSave);
-    } catch (error) {
-      console.error("Failed to save state:", error);
-      // Här skulle man kunna lägga till retry / toast i framtiden
-    }
-  };
-
-  if (!loaded) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-200">
-        <div className="text-center space-y-3">
-          <div className="text-4xl animate-bounce">💰</div>
-          <p className="text-sm font-medium text-slate-100">
-            Loading your family&apos;s Veckopeng…
-          </p>
-          <p className="text-xs text-slate-500">
-            Fetching tasks, balances and members from storage.
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <StateContext.Provider value={{ state, setPartial, reload }}>
+    <AppStateContext.Provider value={{ state, reload, setPartial }}>
       {children}
-    </StateContext.Provider>
+    </AppStateContext.Provider>
   );
-};
-
-export const useAppState = (): StateContextType => {
-  const ctx = useContext(StateContext);
-  if (!ctx) {
-    throw new Error("useAppState must be used inside a StateProvider");
-  }
-  return ctx;
 };

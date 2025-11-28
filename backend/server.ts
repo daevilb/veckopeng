@@ -11,7 +11,6 @@ import { requireFamilyKey } from './familyAuth.ts';
 const app = express();
 const PORT = Number(process.env.PORT) || 8080;
 const DATA_DIR = '/data';
-const JSON_STATE_FILE = path.join(DATA_DIR, 'state.json');
 const DB_FILE = path.join(DATA_DIR, 'veckopeng.db');
 
 if (!fs.existsSync(DATA_DIR)) {
@@ -29,6 +28,7 @@ const db = new Database(DB_FILE);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
+// Schema + default data
 const initDb = () => {
   db.exec(`
     CREATE TABLE IF NOT EXISTS families (
@@ -49,6 +49,7 @@ const initDb = () => {
       currency TEXT,
       balance INTEGER NOT NULL DEFAULT 0,
       totalEarned INTEGER NOT NULL DEFAULT 0,
+      weeklyAllowance INTEGER NOT NULL DEFAULT 0,
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER,
       FOREIGN KEY (familyId) REFERENCES families(id)
@@ -74,556 +75,317 @@ const initDb = () => {
     );
   `);
 
-  // Ensure a default family exists (internal; frontend bryr sig inte om ID:t)
-  const row = db.prepare('SELECT id FROM families LIMIT 1').get() as { id?: string } | undefined;
-  if (!row || !row.id) {
-    const defaultId = 'family_default';
-    db.prepare('INSERT INTO families (id, name) VALUES (?, ?)').run(defaultId, 'Default Family');
+  // NEW: lightweight migration to ensure weeklyAllowance exists on old DBs
+  try {
+    db.prepare(
+      'ALTER TABLE users ADD COLUMN weeklyAllowance INTEGER NOT NULL DEFAULT 0'
+    ).run();
+    console.log('Added weeklyAllowance column to users table');
+  } catch (err) {
+    // Ignore "duplicate column name" – column already exists
+    if (String(err).includes('duplicate column name') === false) {
+      console.error('weeklyAllowance migration error:', err);
+    }
+  }
+
+  const defaultId = 'family_default';
+  const row = db
+    .prepare('SELECT id FROM families WHERE id = ?')
+    .get(defaultId) as { id?: string } | undefined;
+
+  if (!row) {
+    db.prepare('INSERT OR IGNORE INTO families (id, name) VALUES (?, ?)').run(
+      defaultId,
+      'Default Family'
+    );
     console.log('Created default family in database');
   }
 };
 
 const getDefaultFamilyId = (): string => {
-  const row = db.prepare('SELECT id FROM families LIMIT 1').get() as { id?: string } | undefined;
-  return row && row.id ? row.id : 'family_default';
+  return 'family_default';
 };
 
 // -----------------------
-// TYPES
+// HELPERS
 // -----------------------
+const generateId = () => Math.random().toString(36).substring(2, 10);
 
-interface StoredUser {
-  id: string;
-  name: string;
-  role: string; // 'parent' | 'child'
-  pin: string;
-  avatar?: string;
-  phoneNumber?: string;
-  paymentMethod?: string; // 'swish' | 'venmo' | 'cashapp'
-  currency?: string; // 'SEK' | 'USD' etc
-  balance: number;
-  totalEarned: number;
-  createdAt: number;
-  updatedAt?: number | null;
-  familyId: string;
-}
-
-interface StoredTask {
-  id: string;
-  title: string;
-  description?: string;
-  reward: number;
-  assignedToId: string;
-  status: string; // 'pending' | 'waiting_for_approval' | 'completed'
-  createdAt: number;
-  completedAt?: number | null;
-  familyId: string;
-}
-
-interface AppStatePayload {
-  users?: StoredUser[];
-  tasks?: StoredTask[];
-  theme?: 'light' | 'dark' | string;
-}
-
-interface AppStateResponse {
-  users: StoredUser[];
-  tasks: StoredTask[];
-  theme: 'light' | 'dark';
-}
-
-// -----------------------
-// STATE HELPERS
-// -----------------------
-
-const readStateFromDb = (): AppStateResponse => {
-  const familyId = getDefaultFamilyId();
-
-  const users = db
-    .prepare(
-      `
-      SELECT
-        id, name, role, pin, avatar, phoneNumber,
-        paymentMethod, currency, balance, totalEarned,
-        createdAt, updatedAt, familyId
-      FROM users
-      WHERE familyId = ?
-      ORDER BY createdAt ASC
-      `
-    )
-    .all(familyId) as StoredUser[];
-
-  const tasks = db
-    .prepare(
-      `
-      SELECT
-        id, title, description, reward, assignedToId,
-        status, createdAt, completedAt, familyId
-      FROM tasks
-      WHERE familyId = ?
-      ORDER BY createdAt ASC
-      `
-    )
-    .all(familyId) as StoredTask[];
-
-  const themeRow = db
-    .prepare('SELECT value FROM app_meta WHERE key = ?')
-    .get('theme') as { value?: string } | undefined;
-
-  const themeValue = themeRow?.value === 'dark' ? 'dark' : 'light';
-
-  return {
-    users,
-    tasks,
-    theme: themeValue,
-  };
+const getUserById = (id: string) => {
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as any;
 };
 
-const saveStateToDb = (state: AppStatePayload) => {
-  const familyId = getDefaultFamilyId();
-  const users = state.users ?? [];
-  const tasks = state.tasks ?? [];
-  const theme = state.theme === 'dark' ? 'dark' : 'light';
-
-  const tx = db.transaction(() => {
-    db.prepare('DELETE FROM tasks WHERE familyId = ?').run(familyId);
-    db.prepare('DELETE FROM users WHERE familyId = ?').run(familyId);
-
-    const now = Math.floor(Date.now() / 1000);
-
-    const insertUser = db.prepare(
-      `
-      INSERT INTO users (
-        id, familyId, name, role, pin, avatar, phoneNumber,
-        paymentMethod, currency, balance, totalEarned,
-        createdAt, updatedAt
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `
-    );
-
-    for (const u of users) {
-      insertUser.run(
-        u.id,
-        familyId,
-        u.name,
-        u.role,
-        u.pin,
-        u.avatar ?? '👤',
-        u.phoneNumber ?? null,
-        u.paymentMethod ?? null,
-        u.currency ?? null,
-        typeof u.balance === 'number' ? u.balance : 0,
-        typeof u.totalEarned === 'number' ? u.totalEarned : 0,
-        typeof u.createdAt === 'number' ? u.createdAt : now,
-        typeof u.updatedAt === 'number' ? u.updatedAt : null
-      );
-    }
-
-    const insertTask = db.prepare(
-      `
-      INSERT INTO tasks (
-        id, familyId, title, description,
-        reward, assignedToId, status,
-        createdAt, completedAt
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `
-    );
-
-    for (const t of tasks) {
-      const createdAt = typeof t.createdAt === 'number' ? t.createdAt : now;
-      const completedAt =
-        typeof t.completedAt === 'number' ? t.completedAt : null;
-
-      insertTask.run(
-        t.id,
-        familyId,
-        t.title,
-        t.description ?? null,
-        t.reward,
-        t.assignedToId,
-        t.status ?? 'pending',
-        createdAt,
-        completedAt
-      );
-    }
-
-    db.prepare(
-      `
-      INSERT INTO app_meta (key, value)
-      VALUES (?, ?)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value
-      `
-    ).run('theme', theme);
-  });
-
-  tx();
+const getTaskById = (id: string) => {
+  return db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as any;
 };
 
-const migrateFromJsonIfNeeded = () => {
-  if (!fs.existsSync(JSON_STATE_FILE)) {
-    return;
-  }
-
-  try {
-    const familyId = getDefaultFamilyId();
-
-    const existingUser = db
-      .prepare('SELECT id FROM users WHERE familyId = ? LIMIT 1')
-      .get(familyId) as { id?: string } | undefined;
-
-    const existingTask = db
-      .prepare('SELECT id FROM tasks WHERE familyId = ? LIMIT 1')
-      .get(familyId) as { id?: string } | undefined;
-
-    if (existingUser || existingTask) {
-      // DB already has data, don't overwrite it
-      return;
-    }
-
-    const raw = fs.readFileSync(JSON_STATE_FILE, 'utf8');
-    const json = JSON.parse(raw) as AppStatePayload;
-    saveStateToDb(json);
-
-    console.log('Migrated legacy JSON state into SQLite.');
-    // Optionally rename old file so we don't re-migrera varje gång
-    fs.renameSync(JSON_STATE_FILE, `${JSON_STATE_FILE}.migrated`);
-  } catch (err) {
-    console.error('Failed to migrate JSON state:', err);
-  }
-};
-
-// Initialize DB + optional migration
+// Initialize DB
 initDb();
-migrateFromJsonIfNeeded();
 
 // -----------------------
-// REST HELPERS
+// ROUTES
 // -----------------------
-
-const getUserById = (id: string): StoredUser | undefined => {
-  const familyId = getDefaultFamilyId();
-  const row = db
-    .prepare(
-      `
-      SELECT
-        id, name, role, pin, avatar, phoneNumber,
-        paymentMethod, currency, balance, totalEarned,
-        createdAt, updatedAt, familyId
-      FROM users
-      WHERE id = ? AND familyId = ?
-      `
-    )
-    .get(id, familyId) as StoredUser | undefined;
-  return row;
-};
-
-const getTaskById = (id: string): StoredTask | undefined => {
-  const familyId = getDefaultFamilyId();
-  const row = db
-    .prepare(
-      `
-      SELECT
-        id, title, description, reward, assignedToId,
-        status, createdAt, completedAt, familyId
-      FROM tasks
-      WHERE id = ? AND familyId = ?
-      `
-    )
-    .get(id, familyId) as StoredTask | undefined;
-  return row;
-};
-
-// -----------------------
-// PUBLIC HEALTH ENDPOINT (no auth)
-// -----------------------
-
-// This one is ONLY to check that the container is alive
-app.get('/health', (_req, res) => res.send('OK'));
-
-// -----------------------
-// AUTHENTICATION MIDDLEWARE
-// -----------------------
-// Alla /api-rutter nedanför denna kräver en korrekt family key
 app.use('/api', requireFamilyKey);
 
-// -----------------------
-// AUTHENTICATED ROUTES
-// -----------------------
+app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
-// Used by frontend (AuthContext) to validera family key
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok' });
-});
-
-// Legacy-style state endpoints (kept for compatibility)
+// Get full state (users + tasks)
 app.get('/api/state', (req, res) => {
-  try {
-    const state = readStateFromDb();
-    res.json(state);
-  } catch (err) {
-    console.error('Error reading state from DB:', err);
-    res.status(500).json({ error: 'Failed to read state' });
-  }
+  const familyId = getDefaultFamilyId();
+  const users = db
+    .prepare('SELECT * FROM users WHERE familyId = ?')
+    .all(familyId);
+  const tasks = db
+    .prepare('SELECT * FROM tasks WHERE familyId = ?')
+    .all(familyId);
+
+  // Theme is still static here – frontend also has ThemeContext
+  res.json({ users, tasks, theme: 'light' });
 });
 
-app.post('/api/state', (req, res) => {
-  const newState = req.body as AppStatePayload | undefined;
-
-  if (!newState || typeof newState !== 'object') {
-    return res.status(400).json({ error: 'Missing or invalid body' });
-  }
-
+// CREATE USER
+app.post('/api/users', (req, res) => {
   try {
-    saveStateToDb(newState);
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('Error saving state to DB:', err);
-    res.status(500).json({ error: 'Failed to save state' });
-  }
-});
+    const body = req.body;
+    if (!body.name || !body.role || !body.pin) {
+      return res.status(400).json({ error: 'Missing name, role or pin' });
+    }
 
-// --- New REST-style APIs ---
-
-// Get all users (for family)
-app.get('/api/users', (req, res) => {
-  try {
+    const id = generateId();
     const familyId = getDefaultFamilyId();
-    const users = db
-      .prepare(
-        `
-        SELECT
-          id, name, role, pin, avatar, phoneNumber,
-          paymentMethod, currency, balance, totalEarned,
-          createdAt, updatedAt, familyId
-        FROM users
-        WHERE familyId = ?
-        ORDER BY createdAt ASC
-        `
-      )
-      .all(familyId);
-    res.json(users);
-  } catch (err) {
-    console.error('Error fetching users:', err);
-    res.status(500).json({ error: 'Failed to fetch users' });
-  }
-});
-
-// Get all tasks (for family)
-app.get('/api/tasks', (req, res) => {
-  try {
-    const familyId = getDefaultFamilyId();
-    const tasks = db
-      .prepare(
-        `
-        SELECT
-          id, title, description, reward, assignedToId,
-          status, createdAt, completedAt, familyId
-        FROM tasks
-        WHERE familyId = ?
-        ORDER BY createdAt ASC
-        `
-      )
-      .all(familyId);
-    res.json(tasks);
-  } catch (err) {
-    console.error('Error fetching tasks:', err);
-    res.status(500).json({ error: 'Failed to fetch tasks' });
-  }
-});
-
-// Create a task
-app.post('/api/tasks', (req, res) => {
-  try {
-    const body = req.body as {
-      id: string;
-      title: string;
-      description?: string;
-      reward: number;
-      assignedToId: string;
-      status?: string;
-      createdAt?: number;
-    };
-
-    if (!body || typeof body !== 'object') {
-      return res.status(400).json({ error: 'Invalid body' });
-    }
-
-    const { id, title, description, reward, assignedToId } = body;
-
-    const trimmedTitle = typeof title === 'string' ? title.trim() : '';
-
-    if (!id || !trimmedTitle || !assignedToId) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    const rewardNumber =
-      typeof reward === 'number' ? reward : Number((reward as any) ?? NaN);
-    const rewardInt = Number.isFinite(rewardNumber) ? Math.floor(rewardNumber) : 0;
-
-    if (rewardInt <= 0) {
-      return res.status(400).json({ error: 'Reward must be a positive number.' });
-    }
-
-    if (rewardInt > 1_000_000) {
-      return res.status(400).json({ error: 'Reward is unreasonably large.' });
-    }
-
     const now = Math.floor(Date.now() / 1000);
-    const createdAt = typeof body.createdAt === 'number' ? body.createdAt : now;
-    const status = body.status ?? 'pending';
-    const familyId = getDefaultFamilyId();
 
-    // Basic sanity: referenced user must exist
-    const user = getUserById(assignedToId);
-    if (!user) {
-      return res.status(400).json({ error: 'Assigned user not found' });
-    }
-
-    db.prepare(
-      `
-      INSERT INTO tasks (
-        id, familyId, title, description,
-        reward, assignedToId, status,
-        createdAt, completedAt
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `
-    ).run(
+    db.prepare(`
+      INSERT INTO users (id, familyId, name, role, pin, avatar, phoneNumber, paymentMethod, currency, balance, totalEarned, weeklyAllowance, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
       id,
       familyId,
-      trimmedTitle,
-      description ?? null,
-      rewardInt,
-      assignedToId,
-      status,
-      createdAt,
+      body.name,
+      body.role,
+      body.pin,
+      body.avatar || '👤',
+      body.phoneNumber ?? null,
+      body.paymentMethod ?? 'swish',
+      body.currency || 'SEK',
+      0,
+      0,
+      body.weeklyAllowance ?? 0,
+      now,
+      now
+    );
+
+    res.status(201).json(getUserById(id));
+  } catch (err) {
+    console.error('Create User Error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// UPDATE USER (PATCH)
+app.patch('/api/users/:id', (req, res) => {
+  const userId = req.params.id;
+
+  const existing = getUserById(userId);
+  if (!existing) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const body = req.body;
+  const updates: string[] = [];
+  const values: any[] = [];
+
+  // Add fields allowed to be updated
+  if (body.name !== undefined) {
+    updates.push('name = ?');
+    values.push(body.name);
+  }
+  if (body.pin !== undefined) {
+    updates.push('pin = ?');
+    values.push(body.pin);
+  }
+  if (body.avatar !== undefined) {
+    updates.push('avatar = ?');
+    values.push(body.avatar);
+  }
+  if (body.phoneNumber !== undefined) {
+    updates.push('phoneNumber = ?');
+    values.push(body.phoneNumber);
+  }
+  if (body.paymentMethod !== undefined) {
+    updates.push('paymentMethod = ?');
+    values.push(body.paymentMethod);
+  }
+  if (body.currency !== undefined) {
+    updates.push('currency = ?');
+    values.push(body.currency);
+  }
+  if (body.balance !== undefined) {
+    updates.push('balance = ?');
+    values.push(body.balance);
+  }
+  if (body.totalEarned !== undefined) {
+    updates.push('totalEarned = ?');
+    values.push(body.totalEarned);
+  }
+  if (body.weeklyAllowance !== undefined) {
+    updates.push('weeklyAllowance = ?');
+    values.push(body.weeklyAllowance);
+  }
+
+  if (updates.length > 0) {
+    // Always update 'updatedAt'
+    updates.push('updatedAt = ?');
+    values.push(Math.floor(Date.now() / 1000));
+
+    const sql = `UPDATE users SET ${updates.join(', ')} WHERE id = ?`;
+    values.push(userId);
+
+    try {
+      db.prepare(sql).run(...values);
+      res.json(getUserById(userId));
+    } catch (err) {
+      console.error('Update User Error:', err);
+      res.status(500).json({ error: 'Failed to update user' });
+    }
+  } else {
+    res.json(existing);
+  }
+});
+
+// CREATE TASK
+app.post('/api/tasks', (req, res) => {
+  try {
+    const body = req.body;
+
+    if (!body.title || !body.assignedToId) {
+      console.log('Create Task Failed: Missing fields', body);
+      return res
+        .status(400)
+        .json({ error: 'Missing title or assignedToId' });
+    }
+
+    const user = getUserById(body.assignedToId);
+    if (!user) {
+      console.log(`Create Task Failed: User ${body.assignedToId} not found`);
+      return res.status(400).json({ error: 'User not found' });
+    }
+
+    const id = generateId();
+    const familyId = getDefaultFamilyId();
+    const now = Math.floor(Date.now() / 1000);
+
+    db.prepare(`
+      INSERT INTO tasks (id, familyId, title, description, reward, assignedToId, status, createdAt, completedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      familyId,
+      body.title.trim(),
+      body.description,
+      body.reward || 0,
+      body.assignedToId,
+      'pending',
+      now,
       null
     );
 
-    const created = getTaskById(id);
-    res.status(201).json(created);
+    res.status(201).json(getTaskById(id));
   } catch (err) {
-    console.error('Error creating task:', err);
-    res.status(500).json({ error: 'Failed to create task' });
+    console.error('Create Task Error:', err);
+    res.status(500).json({ error: 'Database error' });
   }
 });
 
-// Update task (partial) - e.g. status change
+// UPDATE TASK (PATCH)
 app.patch('/api/tasks/:id', (req, res) => {
   const taskId = req.params.id;
+  const existing = getTaskById(taskId);
 
-  try {
-    const existing = getTaskById(taskId);
-    if (!existing) {
-      return res.status(404).json({ error: 'Task not found' });
-    }
+  if (!existing) {
+    return res.status(404).json({ error: 'Task not found' });
+  }
 
-    const body = req.body as {
-      status?: string;
-      title?: string;
-      description?: string;
-      reward?: number;
-    };
+  const body = req.body;
+  const updates: string[] = [];
+  const values: any[] = [];
 
-    const fields: string[] = [];
-    const values: any[] = [];
+  if (body.title !== undefined) {
+    updates.push('title = ?');
+    values.push(body.title);
+  }
+  if (body.description !== undefined) {
+    updates.push('description = ?');
+    values.push(body.description);
+  }
+  if (body.reward !== undefined) {
+    updates.push('reward = ?');
+    values.push(body.reward);
+  }
+  if (body.assignedToId !== undefined) {
+    updates.push('assignedToId = ?');
+    values.push(body.assignedToId);
+  }
+  if (body.status !== undefined) {
+    updates.push('status = ?');
+    values.push(body.status);
+  }
+  if (body.completedAt !== undefined) {
+    updates.push('completedAt = ?');
+    values.push(body.completedAt);
+  }
 
-    if (body.status && body.status !== existing.status) {
-      fields.push('status = ?');
-      values.push(body.status);
-    }
-
-    if (typeof body.title === 'string' && body.title.trim() && body.title !== existing.title) {
-      fields.push('title = ?');
-      values.push(body.title.trim());
-    }
-
-    if (typeof body.description === 'string' && body.description !== existing.description) {
-      fields.push('description = ?');
-      values.push(body.description);
-    }
-
-    if (typeof body.reward === 'number' && body.reward > 0 && body.reward !== existing.reward) {
-      fields.push('reward = ?');
-      values.push(Math.floor(body.reward));
-    }
-
-    if (fields.length === 0) {
-      return res.json(existing);
-    }
-
-    const sql = `UPDATE tasks SET ${fields.join(', ')} WHERE id = ?`;
+  if (updates.length > 0) {
+    const sql = `UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`;
     values.push(taskId);
 
-    db.prepare(sql).run(...values);
-
-    const updated = getTaskById(taskId);
-    res.json(updated);
-  } catch (err) {
-    console.error('Error updating task:', err);
-    res.status(500).json({ error: 'Failed to update task' });
+    try {
+      db.prepare(sql).run(...values);
+      res.json(getTaskById(taskId));
+    } catch (err) {
+      console.error('Update Task Error:', err);
+      res.status(500).json({ error: 'Failed to update task' });
+    }
+  } else {
+    res.json(existing);
   }
 });
 
-// Approve task: mark as completed + update child balance atomically
+// APPROVE TASK & UPDATE BALANCE
 app.post('/api/tasks/:id/approve', (req, res) => {
   const taskId = req.params.id;
+  const existing = getTaskById(taskId);
 
-  try {
-    const existing = getTaskById(taskId);
-    if (!existing) {
-      return res.status(404).json({ error: 'Task not found' });
-    }
-
-    if (existing.status === 'completed') {
-      return res.status(400).json({ error: 'Task is already completed' });
-    }
-
-    const user = getUserById(existing.assignedToId);
-    if (!user) {
-      return res.status(400).json({ error: 'Assigned user not found' });
-    }
-
-    const now = Math.floor(Date.now() / 1000);
-    const reward = existing.reward;
-
-    const tx = db.transaction(() => {
-      db.prepare(
-        `
-        UPDATE tasks
-        SET status = ?, completedAt = ?
-        WHERE id = ?
-        `
-      ).run('completed', now, taskId);
-
-      db.prepare(
-        `
-        UPDATE users
-        SET balance = balance + ?, totalEarned = totalEarned + ?, updatedAt = ?
-        WHERE id = ?
-        `
-      ).run(reward, reward, now, user.id);
-    });
-
-    tx();
-
-    const updatedTask = getTaskById(taskId);
-    const updatedUser = getUserById(user.id);
-
-    res.json({
-      task: updatedTask,
-      user: updatedUser,
-    });
-  } catch (err) {
-    console.error('Error approving task:', err);
-    res.status(500).json({ error: 'Failed to approve task' });
+  if (!existing) {
+    return res.status(404).json({ error: 'Task not found' });
   }
+
+  const user = getUserById(existing.assignedToId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  if (existing.status !== 'waiting_for_approval') {
+    return res
+      .status(400)
+      .json({ error: 'Task is not waiting for approval' });
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+
+  const tx = db.transaction(() => {
+    db.prepare(
+      'UPDATE tasks SET status = ?, completedAt = ? WHERE id = ?'
+    ).run('completed', now, taskId);
+    db.prepare(
+      'UPDATE users SET balance = balance + ?, totalEarned = totalEarned + ? WHERE id = ?'
+    ).run(existing.reward, existing.reward, user.id);
+  });
+
+  tx();
+  res.json({ task: getTaskById(taskId), user: getUserById(user.id) });
 });
 
-// Start server
 app.listen(PORT, () => {
-  console.log(`Backend running on http://0.0.0.0:${PORT}`);
-  console.log(`SQLite storage: ${DB_FILE}`);
+  console.log(`Backend running on port ${PORT}`);
 });
